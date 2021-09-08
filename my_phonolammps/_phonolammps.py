@@ -65,8 +65,8 @@ class MyPhonoBase(ABC):
             labels = path_data['point_coords']
 
             band_ranges = []
-            for set in path_data['path']:
-                band_ranges.append([labels[set[0]], labels[set[1]]])
+            for _set in path_data['path']:
+                band_ranges.append([labels[_set[0]], labels[_set[1]]])
 
             return {'ranges': band_ranges,
                     'labels': path_data['path']}
@@ -91,13 +91,12 @@ class MyPhonoBase(ABC):
                                 NAC=self._NAC,
                                 symmetrize=self._symmetrize)
 
-            phonon.get_displacement_dataset()
             phonon.generate_displacements(distance=self._displacement_distance)
-            cells_with_disp = phonon.get_supercells_with_displacements()
-            data_set = phonon.get_displacement_dataset()
+            cells_with_disp = phonon.supercells_with_displacements
+            data_set = phonon.dataset
 
             # Check forces for non displaced supercell
-            forces_supercell = self.get_forces(phonon.get_supercell())
+            forces_supercell = self.get_forces(phonon.supercell)
             if np.max(forces_supercell) > 1e-1:
                 warnings.warn('Large atomic forces found for non displaced structure: '
                               '{}. Make sure your unit cell is properly optimized'
@@ -110,9 +109,9 @@ class MyPhonoBase(ABC):
                 forces = self.get_forces(cell)
                 data_set['first_atoms'][i]['forces'] = forces
 
-            phonon.set_displacement_dataset(data_set)
+            phonon.dataset = data_set
             phonon.produce_force_constants()
-            self._force_constants = phonon.get_force_constants()
+            self._force_constants = phonon.force_constants
             self._data_set = data_set
 
         if include_data_set:
@@ -123,7 +122,7 @@ class MyPhonoBase(ABC):
     def plot_phonon_dispersion_bands(self):
         """
         Plot phonon band structure using seekpath automatic k-path
-        Warning: The labels may be wrong if the structure is not standarized
+        Warning: The labels may be wrong if the structure is not standardized
 
         """
         import matplotlib.pyplot as plt
@@ -143,8 +142,7 @@ class MyPhonoBase(ABC):
                                                 bands_and_labels['ranges'],
                                                 force_constants,
                                                 self._supercell_matrix,
-                                                primitive_matrix=self._primitive_matrix,
-                                                band_resolution=30)
+                                                primitive_matrix=self._primitive_matrix)
 
         for i, freq in enumerate(_bands[1]):
             plt.plot(_bands[1][i], _bands[2][i], color='r')
@@ -155,7 +153,7 @@ class MyPhonoBase(ABC):
         plt.ylabel('Frequency [THz]')
         plt.xlabel('Wave vector')
         plt.xlim([0, _bands[1][-1][-1]])
-        plt.axhline(y=0, color='k', ls='dashed')
+        plt.axhline(color='k', ls='dashed')
         plt.suptitle('Phonon dispersion')
 
         if 'labels' in bands_and_labels:
@@ -185,6 +183,7 @@ class MyPhonoBase(ABC):
         Write the force constants in a file in phonopy plain text format
 
         :param filename: Force constants filename
+        :param hdf5: save as HDF5
         """
 
         force_constants = self.get_force_constants()
@@ -220,7 +219,7 @@ class MyPhonoBase(ABC):
         """
         return self._supercell_matrix
 
-    def get_primitve_matrix(self):
+    def get_primitive_matrix(self):
         return self._primitive_matrix
 
     def get_seekpath_bands(self, band_resolution=30):
@@ -261,7 +260,7 @@ class MyPhonoBase(ABC):
                             NAC=self._NAC,
                             symmetrize=self._symmetrize)
 
-        phonon.set_force_constants(self.get_force_constants())
+        phonon.force_constants = self.get_force_constants()
 
         return phonon
 
@@ -336,11 +335,11 @@ def get_phonon(structure,
     if setup_forces:
         if structure.get_force_constants() is not None:
             phonon.force_constants = structure.get_force_constants().get_array()
-            phonon.set_force_constants(structure.get_force_constants().get_array())
+            phonon.force_constants = structure.get_force_constants().get_array()
         elif structure.get_force_sets() is not None:
-            phonon.set_displacement_dataset(structure.get_force_sets().get_dict())
+            phonon.dataset = structure.get_force_sets().get_dict()
             phonon.produce_force_constants()
-            structure.set_force_constants(ForceConstants(phonon.get_force_constants(),
+            structure.set_force_constants(ForceConstants(phonon.force_constants,
                                                          supercell=structure.get_force_sets().get_supercell()))
         else:
             print('No force sets/constants available!')
@@ -348,10 +347,10 @@ def get_phonon(structure,
 
     if NAC:
         print("Using non-analytical corrections")
-        primitive = phonon.get_primitive()
+        primitive = phonon.primitive
         try:
             nac_params = parse_BORN(primitive)
-            phonon.set_nac_params(nac_params=nac_params)
+            phonon.nac_params = nac_params
         except OSError:
             print('Required BORN file not found!')
             exit()
@@ -379,7 +378,7 @@ def obtain_phonon_dispersion_bands(structure, bands_ranges, force_constants, sup
                         super_cell_phonon=supercell,
                         primitive_matrix=primitive_matrix)
 
-    phonon.set_force_constants(force_constants)
+    phonon.force_constants = force_constants
 
     bands = []
     for q_start, q_end in bands_ranges:
@@ -399,8 +398,8 @@ def obtain_phonon_dispersion_bands(structure, bands_ranges, force_constants, sup
 
     except AttributeError:
         # phonopy 1.9.x+ support
-        phonon.set_band_structure(bands, is_band_connection=band_connection, is_eigenvectors=True)
-        bands_phonopy = phonon.get_band_structure()
+        phonon.run_band_structure(bands, is_band_connection=band_connection, with_eigenvectors=True)
+        bands_phonopy = phonon.get_band_structure_dict()
 
     return bands_phonopy
 
