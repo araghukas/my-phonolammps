@@ -129,7 +129,7 @@ class LammpsRunner:
         var_evaluations = []
         for s in ss:
             if not s.startswith('#'):
-                var_evals = re.findall(r"(\${\w+\}|\$\w+)", s)
+                var_evals = re.findall(r"(\${\w+}|\$\w+)", s)
                 for var_eval in var_evals:
                     var_evaluations.append(var_eval.strip("${}"))
 
