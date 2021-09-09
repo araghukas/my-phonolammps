@@ -11,6 +11,8 @@ from my_phonolammps._phonolammps import (MyPhonoBase,
                                          obtain_phonon_dispersion_bands,
                                          generate_VASP_structure)
 
+__version__ = "2021.1"
+
 
 def read_structure_params_from_dump(dump_file: str, na: int):
     ids, masses, symbols = [], [], []
@@ -130,8 +132,6 @@ class MyPhonolammps(MyPhonoBase):
     a SORTED dump file and reading it every time.
     """
 
-    TRASH_COUNTER_MAX = 50
-
     def write_force_constants(self, filename='FORCE_CONSTANTS',
                               hdf5=False,
                               omit_zeros=True,
@@ -179,6 +179,7 @@ class MyPhonolammps(MyPhonoBase):
                  supercell_matrix=np.identity(3),
                  primitive_matrix=np.identity(3),
                  displacement_distance=0.01,
+                 trash_counter_max=50,
                  show_log=False,
                  show_progress=False,
                  use_NAC=False,
@@ -191,6 +192,7 @@ class MyPhonolammps(MyPhonoBase):
         :param supercell_matrix:  3x3 matrix supercell
         :param primitive_matrix:  3x3 matrix primitive cell
         :param displacement_distance: displacement distance in Angstroms
+        :param trash_counter_max: maximum number of temp files written before overwriting
         :param show_log: Set true to display lammps log info
         :param show_progress: Set true to display progress of calculation
         """
@@ -208,6 +210,7 @@ class MyPhonolammps(MyPhonoBase):
         self._supercell_matrix = supercell_matrix
         self._primitive_matrix = primitive_matrix
         self._displacement_distance = displacement_distance
+        self._trash_counter_max = trash_counter_max
         self._show_log = show_log
         self._show_progress = show_progress
         self._symmetrize = symmetrize
@@ -237,7 +240,7 @@ class MyPhonolammps(MyPhonoBase):
 
     def _next_temp_file_name(self, basename):
         """assign name for temporary kinds with same basename"""
-        if self._temp_name_counter > self.TRASH_COUNTER_MAX:
+        if self._temp_name_counter > self._trash_counter_max:
             # overwrite oldest files
             self._temp_name_counter = 1
         else:
@@ -311,7 +314,7 @@ class MyPhonolammps(MyPhonoBase):
         Calculate the forces of a supercell using lammps
 
         :param cell_with_disp: supercell from which determine the forces
-        :return: numpy array matrix with forces of atoms [Natoms x 3]
+        :return: numpy array matrix with forces of atoms [N_atoms x 3]
         """
         import lammps
 
@@ -361,6 +364,3 @@ class MyPhonolammps(MyPhonoBase):
             if line.startswith('units'):
                 return line.split()[1]
         return 'lj'
-
-
-__version__ = "25July2021"

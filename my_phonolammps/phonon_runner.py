@@ -215,7 +215,8 @@ class PhononRunner:
                  generic_relax='./generic_relax.lammps',
                  generic_in='./generic_in.lammps',
                  marker=None,
-                 clean_up=False):
+                 clean_up=False,
+                 trash_counter_max=50):
 
         # nothing works if these don't exist
         generic_relax = os.path.expanduser(generic_relax)
@@ -247,6 +248,7 @@ class PhononRunner:
         self._phonon_npoints = 51
         self._phonon = None
         self._phl = None
+        self._trash_counter_max = trash_counter_max
 
     def __del__(self):
         if self.clean_up:
@@ -354,7 +356,8 @@ class PhononRunner:
 
         self._phl = MyPhonolammps(input_file,
                                   supercell_matrix=_ID_MATRIX,
-                                  show_progress=True)
+                                  show_progress=True,
+                                  trash_counter_max=self._trash_counter_max)
 
         self._phl.write_unitcell_POSCAR(unitcell)
         self._phl.write_force_constants(force_constants,
