@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import warnings
 
 import numpy as np
-from phonopy.api_phonopy import Phonopy
+from phonopy import Phonopy
 from phonopy.file_IO import parse_BORN
 from phonopy.file_IO import (write_FORCE_CONSTANTS,
                              write_force_constants_to_hdf5,
@@ -90,7 +90,6 @@ class MyPhonoBase(ABC):
                                 primitive_matrix=self._primitive_matrix,
                                 NAC=self._NAC,
                                 symmetrize=self._symmetrize)
-
             phonon.generate_displacements(distance=self._displacement_distance)
             cells_with_disp = phonon.supercells_with_displacements
             data_set = phonon.dataset
@@ -128,8 +127,7 @@ class MyPhonoBase(ABC):
         import matplotlib.pyplot as plt
 
         def replace_list(text_string):
-            substitutions = {'GAMMA': u'$\Gamma$',
-                             }
+            substitutions = {'GAMMA': u'$\Gamma$'}
 
             for item in substitutions.items():
                 text_string = text_string.replace(item[0], item[1])
@@ -327,6 +325,7 @@ def get_phonon(structure,
     """
 
     phonon = Phonopy(structure, super_cell_phonon,
+                     symprec=1e-5,
                      primitive_matrix=primitive_matrix,
                      is_symmetry=symmetrize)
 

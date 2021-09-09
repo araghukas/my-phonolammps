@@ -132,6 +132,51 @@ class MyPhonolammps(MyPhonoBase):
     a SORTED dump file and reading it every time.
     """
 
+    def get_forces(self, cell_with_disp):
+        """
+        I have rewritten this to use dump files and MyPhonopyAtoms.
+        The point is to avoid shuffling atoms in the structure.
+
+        ORIGINAL DOCSTRING:
+
+        Calculate the forces of a supercell using lammps
+
+        :param cell_with_disp: supercell from which determine the forces
+        :return: numpy array matrix with forces of atoms [N_atoms x 3]
+        """
+        import lammps
+
+        cmd_list = ['-log', 'none']
+        if not self._show_log:
+            cmd_list += ['-echo', 'none', '-screen', 'none']
+
+        lmp = lammps.lammps(cmdargs=cmd_list)
+        lmp.commands_list(self._lammps_commands_list)
+        lmp.command('replicate {} {} {}'
+                    .format(*np.diag(self._supercell_matrix).astype(int)))
+        lmp.command('run 0')
+
+        coordinates = cell_with_disp.get_positions()
+        for i, atom_id in enumerate(self._structure.ids):
+            lmp.command("set atom {:d} x {:f} y {:f} z {:f}"
+                        .format(atom_id, *coordinates[i]))
+        lmp.command("run 0")
+
+        # tell LAMMPS to dump the relevant info
+        _temp_file_ = self._next_temp_file_name("_FORCES_DUMP_")
+        lmp.commands_list([
+            "dump _GetForcesDump_ all custom 1 {} fx fy fz".format(_temp_file_),
+            "dump_modify _GetForcesDump_ sort id"
+            " format 1 %20.15g format 2 %20.15g format 3 %20.15g",
+            "run 0",
+            "undump _GetForcesDump_"
+        ])
+        lmp.close()
+
+        forces = read_forces_from_dump(_temp_file_) * unit_factors[self.units]
+
+        return forces
+
     def write_force_constants(self, filename='FORCE_CONSTANTS',
                               hdf5=False,
                               omit_zeros=True,
@@ -152,27 +197,6 @@ class MyPhonolammps(MyPhonoBase):
         lines = self.get_nonzero_FC_lines(force_constants, omit_zeros_thresh)
         with open(filename, 'w') as w:
             w.write("\n".join(lines))
-
-    @staticmethod
-    def get_nonzero_FC_lines(force_constants, omit_zeros_thresh):
-        indices = np.arange(force_constants.shape[0], dtype='intc')
-        lines = []
-        fc_shape = force_constants.shape
-        lines.append("%4d %4d" % fc_shape[:2])
-        for i, s_i in enumerate(indices):
-            for j in range(fc_shape[1]):
-
-                # check interaction matrix norm
-                norm = 0.0
-                for vec in force_constants[i][j]:
-                    norm += np.linalg.norm(vec)
-
-                if norm > omit_zeros_thresh:
-                    lines.append("%d %d" % (s_i + 1, j + 1))
-                    for vec in force_constants[i][j]:
-                        lines.append(("%22.15f" * 3) % tuple(vec))
-
-        return lines
 
     def __init__(self,
                  lammps_input,
@@ -304,51 +328,6 @@ class MyPhonolammps(MyPhonoBase):
                               cell=unitcell,
                               ids=ids)
 
-    def get_forces(self, cell_with_disp):
-        """
-        I have rewritten this to use dump files and MyPhonopyAtoms.
-        The point is to avoid shuffling atoms in the structure.
-
-        ORIGINAL DOCSTRING:
-
-        Calculate the forces of a supercell using lammps
-
-        :param cell_with_disp: supercell from which determine the forces
-        :return: numpy array matrix with forces of atoms [N_atoms x 3]
-        """
-        import lammps
-
-        cmd_list = ['-log', 'none']
-        if not self._show_log:
-            cmd_list += ['-echo', 'none', '-screen', 'none']
-
-        lmp = lammps.lammps(cmdargs=cmd_list)
-        lmp.commands_list(self._lammps_commands_list)
-        lmp.command('replicate {} {} {}'
-                    .format(*np.diag(self._supercell_matrix).astype(int)))
-        lmp.command('run 0')
-
-        coordinates = cell_with_disp.get_positions()
-        for i, atom_id in enumerate(self._structure.ids):
-            lmp.command("set atom {:d} x {:f} y {:f} z {:f}"
-                        .format(atom_id, *coordinates[i]))
-        lmp.command("run 0")
-
-        # tell LAMMPS to dump the relevant info
-        _temp_file_ = self._next_temp_file_name("_FORCES_DUMP_")
-        lmp.commands_list([
-            "dump _GetForcesDump_ all custom 1 {} fx fy fz".format(_temp_file_),
-            "dump_modify _GetForcesDump_ sort id"
-            " format 1 %20.15g format 2 %20.15g format 3 %20.15g",
-            "run 0",
-            "undump _GetForcesDump_"
-        ])
-        lmp.close()
-
-        forces = read_forces_from_dump(_temp_file_) * unit_factors[self.units]
-
-        return forces
-
     def write_structure(self, file_name):
         self._structure.write_as_lammps_data(file_name)
 
@@ -364,3 +343,24 @@ class MyPhonolammps(MyPhonoBase):
             if line.startswith('units'):
                 return line.split()[1]
         return 'lj'
+
+    @staticmethod
+    def get_nonzero_FC_lines(force_constants, omit_zeros_thresh):
+        indices = np.arange(force_constants.shape[0], dtype='intc')
+        lines = []
+        fc_shape = force_constants.shape
+        lines.append("%4d %4d" % fc_shape[:2])
+        for i, s_i in enumerate(indices):
+            for j in range(fc_shape[1]):
+
+                # check interaction matrix norm
+                norm = 0.0
+                for vec in force_constants[i][j]:
+                    norm += np.linalg.norm(vec)
+
+                if norm > omit_zeros_thresh:
+                    lines.append("%d %d" % (s_i + 1, j + 1))
+                    for vec in force_constants[i][j]:
+                        lines.append(("%22.15f" * 3) % tuple(vec))
+
+        return lines
