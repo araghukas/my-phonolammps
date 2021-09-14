@@ -11,7 +11,7 @@ from my_phonolammps._phonolammps import (MyPhonoBase,
                                          obtain_phonon_dispersion_bands,
                                          generate_VASP_structure)
 
-__version__ = "2021.1"
+__version__ = "2021.2"
 
 
 def read_structure_params_from_dump(dump_file: str, na: int):
@@ -177,14 +177,15 @@ class MyPhonolammps(MyPhonoBase):
 
         return forces
 
-    def write_force_constants(self, filename='FORCE_CONSTANTS',
-                              hdf5=False,
-                              omit_zeros=True,
-                              omit_zeros_thresh=1e-6) -> None:
+    def write_force_constants(self,
+                              filename: str = 'FORCE_CONSTANTS',
+                              hdf5: bool = False,
+                              omit_zeros: bool = True,
+                              omit_zeros_thresh: float = 1e-6) -> None:
         """
         Write the force constants in a file in phonopy plain text format
 
-        :param filename: Force constants filename
+        :param filename: force constants filename
         :param hdf5: write to HDF5 file
         :param omit_zeros: omit writing all-zero entries in the output file
         :param omit_zeros_thresh: omit force constant matrices with norm below this value
@@ -194,9 +195,36 @@ class MyPhonolammps(MyPhonoBase):
             return
 
         force_constants = self.get_force_constants()
-        lines = self.get_nonzero_FC_lines(force_constants, omit_zeros_thresh)
-        with open(filename, 'w') as w:
-            w.write("\n".join(lines))
+        lines = self.get_matrix_lines(force_constants, omit_zeros, omit_zeros_thresh)
+        with open(filename, 'w') as f:
+            f.write("\n".join(lines))
+
+    def write_harmonic_constants(self,
+                                 filename: str = "HARMONIC_CONSTANTS",
+                                 omit_zeros: bool = True,
+                                 omit_zeros_thresh: float = 1e-9) -> None:
+        """
+        Write the harmonic constants (force_constants[i][j] / sqrt(mass[i] * mass[j]))
+        in the same format as force constants.
+
+        :param filename: force constants filename
+        :param omit_zeros: omit writing all-zero entries in the output file
+        :param omit_zeros_thresh: omit harmonic constant matrices with norm below this value
+        """
+
+        force_constants = self.get_force_constants()
+
+        # collect masses and divide into force_constants
+        masses = self._structure.masses
+        masses_sqrt = np.sqrt(np.outer(masses, masses))
+        harmonic_constants = np.zeros(force_constants.shape)
+        for i in range(force_constants.shape[0]):
+            for j in range(force_constants.shape[1]):
+                harmonic_constants[i][j] = force_constants[i][j] / masses_sqrt[i][j]
+
+        lines = self.get_matrix_lines(harmonic_constants, omit_zeros, omit_zeros_thresh)
+        with open(filename, 'w') as f:
+            f.write("\n".join(lines))
 
     def __init__(self,
                  lammps_input,
@@ -345,22 +373,32 @@ class MyPhonolammps(MyPhonoBase):
         return 'lj'
 
     @staticmethod
-    def get_nonzero_FC_lines(force_constants, omit_zeros_thresh):
-        indices = np.arange(force_constants.shape[0], dtype='intc')
+    def get_matrix_lines(matrix: np.ndarray,
+                         omit_zeros: bool,
+                         omit_zeros_thresh: float):
+        indices = np.arange(matrix.shape[0], dtype='intc')
         lines = []
-        fc_shape = force_constants.shape
-        lines.append("%4d %4d" % fc_shape[:2])
-        for i, s_i in enumerate(indices):
-            for j in range(fc_shape[1]):
+        _shape = matrix.shape
+        lines.append("%4d %4d" % _shape[:2])
+        dim = _shape[3]
 
-                # check interaction matrix norm
-                norm = 0.0
-                for vec in force_constants[i][j]:
-                    norm += np.linalg.norm(vec)
-
-                if norm > omit_zeros_thresh:
+        if omit_zeros:
+            # check interaction matrix norm isn't too small
+            for i, s_i in enumerate(indices):
+                for j in range(_shape[1]):
+                    norm = 0.0
+                    for vec in matrix[i][j]:
+                        norm += np.linalg.norm(vec)
+                    if norm > omit_zeros_thresh:
+                        lines.append("%d %d" % (s_i + 1, j + 1))
+                        for vec in matrix[i][j]:
+                            lines.append(("%22.15f" * dim) % tuple(vec))
+        else:
+            # write every line
+            for i, s_i in enumerate(indices):
+                for j in range(_shape[1]):
                     lines.append("%d %d" % (s_i + 1, j + 1))
-                    for vec in force_constants[i][j]:
-                        lines.append(("%22.15f" * 3) % tuple(vec))
+                    for vec in matrix[i][j]:
+                        lines.append(("%22.15f" * dim) % tuple(vec))
 
         return lines

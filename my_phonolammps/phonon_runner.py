@@ -182,6 +182,7 @@ class PhononOutputFiles:
         self.band = self.get_path(f"band_{marker}.hdf5")
         self.dos = self.get_path(f"dos_{marker}.dat")
         self.force_constants_filename = self.get_path(f"FC_{marker}")
+        self.harmonic_constants_filename = self.get_path(f"HC_{marker}")
         self.unitcell_filename = self.get_path(f"UC_{marker}")
         self.relaxed_unitcell_filename = self.get_path(f"RELAXED_{marker}.data")
         self.marker = marker
@@ -363,6 +364,44 @@ class PhononRunner:
         self._phl.write_force_constants(force_constants,
                                         omit_zeros=omit_zeros,
                                         omit_zeros_thresh=omit_zeros_thresh)
+
+        # delete substituted LAMMPS input file
+        os.remove(input_file)
+
+    def compute_harmonic_constants(self,
+                                   relaxed: bool = True,
+                                   omit_zeros: bool = True,
+                                   omit_zeros_thresh: float = 1e-6) -> None:
+        """use phonolammps to compute and write the force constants"""
+
+        # aliasing for neatness
+        wire_datafile = self.wire_datafile
+        relaxed_datafile = self.outputs.relaxed_unitcell_filename
+        hc_filename = self.outputs.harmonic_constants_filename
+        potential_file = self.potential_file
+
+        if not relaxed:
+            # re-write 'relaxed' data-file without doing minimization
+            self.relax_structure(dummy=True)
+
+        required_vars = [
+            # TODO: fix these terrible names
+            LammpsVarLine("data_file", VarType.STRING, wire_datafile),
+            LammpsVarLine("output_file", VarType.STRING, relaxed_datafile),
+            LammpsVarLine("potential_file", VarType.STRING, potential_file)
+        ]
+
+        input_file = LammpsRunner(self.generic_in,
+                                  required_vars).write_final_script()
+
+        self._phl = MyPhonolammps(input_file,
+                                  supercell_matrix=_ID_MATRIX,
+                                  show_progress=True,
+                                  trash_counter_max=self._trash_counter_max)
+
+        self._phl.write_harmonic_constants(hc_filename,
+                                           omit_zeros=omit_zeros,
+                                           omit_zeros_thresh=omit_zeros_thresh)
 
         # delete substituted LAMMPS input file
         os.remove(input_file)
