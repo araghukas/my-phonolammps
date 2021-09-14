@@ -355,10 +355,11 @@ class PhononRunner:
         input_file = LammpsRunner(self.generic_in,
                                   required_vars).write_final_script()
 
-        self._phl = MyPhonolammps(input_file,
-                                  supercell_matrix=_ID_MATRIX,
-                                  show_progress=True,
-                                  trash_counter_max=self._trash_counter_max)
+        if self._phl is None:
+            self._phl = MyPhonolammps(input_file,
+                                      supercell_matrix=_ID_MATRIX,
+                                      show_progress=True,
+                                      trash_counter_max=self._trash_counter_max)
 
         self._phl.write_unitcell_POSCAR(unitcell)
         self._phl.write_force_constants(force_constants,
@@ -394,10 +395,11 @@ class PhononRunner:
         input_file = LammpsRunner(self.generic_in,
                                   required_vars).write_final_script()
 
-        self._phl = MyPhonolammps(input_file,
-                                  supercell_matrix=_ID_MATRIX,
-                                  show_progress=True,
-                                  trash_counter_max=self._trash_counter_max)
+        if self._phl is None:
+            self._phl = MyPhonolammps(input_file,
+                                      supercell_matrix=_ID_MATRIX,
+                                      show_progress=True,
+                                      trash_counter_max=self._trash_counter_max)
 
         self._phl.write_harmonic_constants(hc_filename,
                                            omit_zeros=omit_zeros,
