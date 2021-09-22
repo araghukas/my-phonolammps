@@ -4,8 +4,11 @@ from my_phonolammps import __version__
 setup(
     name="my_phonolammps",
     version=__version__,
-    description="A package that uses LAMMPS to compute phonon quantities.",
+    description="My personal version of phonolammps; avoids atom shuffling issues.",
     author="Ara Ghukasyan",
+    author_email="ghukasa@mcmaster.ca",
+    url="https://github.com/araghukas/my-phonolammps.git",
+    license="MIT",
     install_requires=["numpy", "phonopy", "seekpath"],
     packages=find_packages()
 )
