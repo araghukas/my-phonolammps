@@ -13,7 +13,8 @@ from phonopy.file_IO import parse_BORN
 from phonopy.file_IO import (write_FORCE_CONSTANTS,
                              write_force_constants_to_hdf5,
                              write_FORCE_SETS)
-from lammps import lammps
+
+from my_phonolammps import _lammps
 
 # define the force unit conversion factors to LAMMPS metal style (eV/Angstrom)
 unit_factors = {
@@ -587,7 +588,7 @@ class MyPhonolammps(MyPhonoBase):
         if not self._show_log:
             cmd_list += ['-echo', 'none', '-screen', 'none']
 
-        lmp = lammps(cmdargs=cmd_list)
+        lmp = _lammps(cmdargs=cmd_list)
         lmp.commands_list(self._lammps_commands_list)
         lmp.command('replicate {} {} {}'
                     .format(*np.diag(self._supercell_matrix).astype(int)))
@@ -794,7 +795,7 @@ class MyPhonolammps(MyPhonoBase):
         if not self._show_log:
             cmd_list += ['-echo', 'none', '-screen', 'none']
 
-        lmp = lammps(cmdargs=cmd_list)
+        lmp = _lammps(cmdargs=cmd_list)
         lmp.commands_list(self._lammps_commands_list)
 
         # extract box as before
