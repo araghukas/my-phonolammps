@@ -13,6 +13,7 @@ from phonopy.file_IO import parse_BORN
 from phonopy.file_IO import (write_FORCE_CONSTANTS,
                              write_force_constants_to_hdf5,
                              write_FORCE_SETS)
+from lammps import lammps
 
 # define the force unit conversion factors to LAMMPS metal style (eV/Angstrom)
 unit_factors = {
@@ -582,13 +583,11 @@ class MyPhonolammps(MyPhonoBase):
         :param cell_with_disp: supercell from which determine the forces
         :return: numpy array matrix with forces of atoms [N_atoms x 3]
         """
-        import lammps
-
         cmd_list = ['-log', 'none']
         if not self._show_log:
             cmd_list += ['-echo', 'none', '-screen', 'none']
 
-        lmp = lammps.lammps(cmdargs=cmd_list)
+        lmp = lammps(cmdargs=cmd_list)
         lmp.commands_list(self._lammps_commands_list)
         lmp.command('replicate {} {} {}'
                     .format(*np.diag(self._supercell_matrix).astype(int)))
@@ -790,7 +789,6 @@ class MyPhonolammps(MyPhonoBase):
 
     def _get_structure_from_lammps(self, recenter_atoms=True):
         """my version that (hopefully) won't shuffle atoms"""
-        from lammps import lammps
 
         cmd_list = ['-log', 'none']
         if not self._show_log:
