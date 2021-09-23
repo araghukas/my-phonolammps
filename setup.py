@@ -9,6 +9,6 @@ setup(
     author_email="ghukasa@mcmaster.ca",
     url="https://github.com/araghukas/my-phonolammps.git",
     license="MIT",
-    install_requires=["numpy", "phonopy", "seekpath"],
+    install_requires=["lammps", "numpy", "phonopy", "seekpath"],
     packages=find_packages()
 )
