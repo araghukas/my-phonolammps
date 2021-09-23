@@ -14,7 +14,7 @@ from phonopy.file_IO import (write_FORCE_CONSTANTS,
                              write_force_constants_to_hdf5,
                              write_FORCE_SETS)
 
-from my_phonolammps import _lammps
+from my_phonolammps._lammps import MyLammps
 
 # define the force unit conversion factors to LAMMPS metal style (eV/Angstrom)
 unit_factors = {
@@ -588,7 +588,7 @@ class MyPhonolammps(MyPhonoBase):
         if not self._show_log:
             cmd_list += ['-echo', 'none', '-screen', 'none']
 
-        lmp = _lammps(cmdargs=cmd_list)
+        lmp = MyLammps(cmdargs=cmd_list)
         lmp.commands_list(self._lammps_commands_list)
         lmp.command('replicate {} {} {}'
                     .format(*np.diag(self._supercell_matrix).astype(int)))
@@ -776,7 +776,10 @@ class MyPhonolammps(MyPhonoBase):
 
     def __del__(self):
         """clean up temporary files"""
-        os.system("rm -rf %s" % self._trash_dir)
+        try:
+            os.system("rm -rf %s" % self._trash_dir)
+        except AttributeError:
+            pass
 
     def _next_temp_file_name(self, basename):
         """assign name for temporary kinds with same basename"""
@@ -795,7 +798,7 @@ class MyPhonolammps(MyPhonoBase):
         if not self._show_log:
             cmd_list += ['-echo', 'none', '-screen', 'none']
 
-        lmp = _lammps(cmdargs=cmd_list)
+        lmp = MyLammps(cmdargs=cmd_list)
         lmp.commands_list(self._lammps_commands_list)
 
         # extract box as before

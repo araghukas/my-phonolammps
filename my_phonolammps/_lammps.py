@@ -1,21 +1,21 @@
 """Here the original lammps class is wrapped to allow specifying the `modpath`"""
 from lammps import *
-from lammps import lammps as original_lammps
+from lammps import lammps
 
 
-class _lammps(original_lammps):
+class MyLammps(lammps):
     """new version of the lammps class"""
 
     # path to the directory containing liblammps.so or liblammps.dylib
-    modpath: str = None
+    MODPATH: str = None
 
     def __init__(self, name="", cmdargs=None, ptr=None, comm=None):
-        if self.modpath is None:
+        if self.MODPATH is None:
             # instantiate the original class as usual
-            original_lammps.__init__(self, name, cmdargs, ptr, comm)
+            lammps.__init__(self, name, cmdargs, ptr, comm)
         else:
             # instantiate with a specific `modpath`
-            modpath = os.path.abspath(_lammps.modpath)
+            modpath = os.path.abspath(self.MODPATH)
             try:
                 self._create_instance(modpath)
             except OSError:
@@ -140,9 +140,9 @@ class _lammps(original_lammps):
             # allow for int (like MPICH) or void* (like OpenMPI)
 
             if comm:
-                if not _lammps.has_mpi4py:
+                if not MyLammps.has_mpi4py:
                     raise Exception('Python mpi4py version is not 2 or 3')
-                if _lammps.MPI._sizeof(_lammps.MPI.Comm) == sizeof(c_int):
+                if MyLammps.MPI._sizeof(MyLammps.MPI.Comm) == sizeof(c_int):
                     MPI_Comm = c_int
                 else:
                     MPI_Comm = c_void_p
@@ -165,12 +165,12 @@ class _lammps(original_lammps):
                 self.lib.lammps_open.restype = None
                 self.opened = 1
                 self.lmp = c_void_p()
-                comm_ptr = _lammps.MPI._addressof(comm)
+                comm_ptr = MyLammps.MPI._addressof(comm)
                 comm_val = MPI_Comm.from_address(comm_ptr)
                 self.lib.lammps_open(narg, cargs, comm_val, byref(self.lmp))
 
             else:
-                if _lammps.has_mpi4py:
+                if MyLammps.has_mpi4py:
                     from mpi4py import MPI
                     self.comm = MPI.COMM_WORLD
                 self.opened = 1
