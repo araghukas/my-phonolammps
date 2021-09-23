@@ -4,15 +4,14 @@ import re
 from typing import List, Set, Tuple
 from enum import Enum
 from dataclasses import dataclass
-
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-import lammps
 from phonopy import Phonopy, load as phonopy_load
 from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
 
-from my_phonolammps import MyPhonolammps
+from my_phonolammps._lammps import MyLammps
+from my_phonolammps._phonolammps import MyPhonolammps
 
 _ID_MATRIX = [[1, 0, 0],
               [0, 1, 0],
@@ -78,7 +77,7 @@ class LammpsRunner:
         if append_commands is None:
             append_commands = []
 
-        lmp = lammps.lammps()
+        lmp = MyLammps()
         commands_list = self._get_skipped_commands_list(skip_lines, skip_keywords)
         commands_list += append_commands
 
