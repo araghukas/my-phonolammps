@@ -17,7 +17,7 @@ class MyLammps(lammps):
             # instantiate with a specific `modpath`
             modpath = os.path.abspath(self.MODPATH)
             try:
-                self._create_instance(modpath)
+                self._create_instance(modpath, name, cmdargs, ptr, comm)
             except OSError:
                 raise FileNotFoundError(
                     f"LAMMPS shared library not found in directory {modpath}"
