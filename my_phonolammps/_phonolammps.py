@@ -178,11 +178,14 @@ def generate_VASP_structure(structure, scaled=True):
     return vasp_POSCAR
 
 
-def read_structure_params_from_dump(dump_file: str, na: int):
+def read_structure_params_from_dump(dump_file: str):
     ids, masses, symbols = [], [], []
-    positions = np.zeros((na, 3), dtype='double')
     with open(dump_file) as f:
         line = f.readline()
+        while line and not line.startswith("ITEM: NUMBER OF ATOMS"):
+            line = f.readline()
+        n_atoms = int(f.readline().strip())
+        positions = np.zeros((n_atoms, 3), dtype='double')
         while line and not line.startswith("ITEM: ATOMS"):
             line = f.readline()
         if not line:
@@ -190,7 +193,7 @@ def read_structure_params_from_dump(dump_file: str, na: int):
 
         line = f.readline()
         i = 0
-        while i < na:
+        while i < n_atoms:
             line = line.strip()
             nums = line.split()
             atom_id = int(nums[0])
@@ -833,10 +836,9 @@ class MyPhonolammps(MyPhonoBase):
             "run 0",
             "undump _GetStructureDump_"
         ])
-        na = lmp.get_natoms()
         lmp.close()
 
-        ids, masses, symbols, positions = read_structure_params_from_dump(_temp_file_, na)
+        ids, masses, symbols, positions = read_structure_params_from_dump(_temp_file_)
 
         if recenter_atoms:
             # keep atoms positions same relative to the box
