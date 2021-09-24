@@ -13,7 +13,6 @@ from phonopy.file_IO import parse_BORN
 from phonopy.file_IO import (write_FORCE_CONSTANTS,
                              write_force_constants_to_hdf5,
                              write_FORCE_SETS)
-from lammps import lammps
 
 from my_phonolammps._lammps import MyLammps
 
@@ -402,6 +401,7 @@ class MyPhonoBase(ABC):
         """
 
         force_constants = self.get_force_constants()
+
         if hdf5:
             write_force_constants_to_hdf5(force_constants, filename=filename)
         else:
