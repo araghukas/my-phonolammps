@@ -140,7 +140,7 @@ class MyLammps(lammps):
             # allow for int (like MPICH) or void* (like OpenMPI)
 
             if comm:
-                if not MyLammps.has_mpi4py:
+                if not super().has_mpi4py:
                     raise Exception('Python mpi4py version is not 2 or 3')
                 if MyLammps.MPI._sizeof(MyLammps.MPI.Comm) == sizeof(c_int):
                     MPI_Comm = c_int
@@ -170,7 +170,7 @@ class MyLammps(lammps):
                 self.lib.lammps_open(narg, cargs, comm_val, byref(self.lmp))
 
             else:
-                if MyLammps.has_mpi4py:
+                if super().has_mpi4py:
                     from mpi4py import MPI
                     self.comm = MPI.COMM_WORLD
                 self.opened = 1
