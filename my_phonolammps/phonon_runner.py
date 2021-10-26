@@ -88,7 +88,7 @@ class LammpsRunner:
     def write_final_script(self, filename: str = None) -> str:
         """write copy of the final script"""
         if filename is None:
-            filename = f"in_{id(self)}.lammps"
+            filename = f"in_{MyPhonolammps.get_random_id_string(12)}.lammps"
 
         with open(filename, 'w') as _file:
             _file.write("".join(self.commands_list))

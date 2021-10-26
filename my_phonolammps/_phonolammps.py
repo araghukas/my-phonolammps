@@ -3,6 +3,8 @@ Module of objects connecting core phonopy functionality
 """
 import os
 import warnings
+import random
+import string
 import numpy as np
 from abc import ABC, abstractmethod
 from math import sqrt
@@ -768,7 +770,7 @@ class MyPhonolammps(MyPhonoBase):
         self._data_set = None
 
         # to avoid permission errors when deleting large files after reading
-        self._trash_dir = "./__phl_trash__"
+        self._trash_dir = f"./__phl_trash_{self.get_random_id_string(16)}__"
         if not os.path.isdir(self._trash_dir):
             os.mkdir(self._trash_dir)
         self._temp_name_counter = 1
@@ -896,3 +898,9 @@ class MyPhonolammps(MyPhonoBase):
                         lines.append(("%22.15f" * dim) % tuple(vec))
 
         return lines
+
+    @staticmethod
+    def get_random_id_string(k: int) -> str:
+        """return a random string of `n` letters and or numbers"""
+        chars = random.choices(string.ascii_letters + string.digits, k=k)
+        return "".join(chars)
