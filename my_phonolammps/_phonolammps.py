@@ -672,7 +672,7 @@ class MyPhonolammps(MyPhonoBase):
     def write_harmonic_constants(self,
                                  filename: str = "HARMONIC_CONSTANTS",
                                  omit_zeros: bool = True,
-                                 omit_zeros_thresh: float = 1e-6) -> None:
+                                 omit_zeros_thresh: float = 1e-9) -> None:
         """
         Write the harmonic constants (force_constants[i][j] / sqrt(mass[i] * mass[j]))
         in the same format as force constants.
@@ -700,9 +700,8 @@ class MyPhonolammps(MyPhonoBase):
                         m_i = masses[i]
                         m_j = masses[j]
 
-                        norm = 0.0
-                        for vec in force_constants[i][j]:
-                            norm += np.linalg.norm(vec)
+                        norm = np.linalg.norm(force_constants[i][j])
+                        print("{:.2e}".format(norm))
                         if norm > omit_zeros_thresh:
                             hc_file.write("%d %d\n" % (s_i + 1, j + 1))
                             for vec in force_constants[i][j]:
