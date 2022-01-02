@@ -288,10 +288,10 @@ class PhononRunner:
     def phl(self) -> MyPhonolammps:
         return self._phl
 
-    def run(self) -> None:
+    def run(self, omit_zeros: bool = True, omit_zeros_thresh: float = 1e-6) -> None:
         """relax structure, compute forces, and compute phonons"""
         self.relax_structure()
-        self.compute_forces()
+        self.compute_forces(omit_zeros=omit_zeros, omit_zeros_thresh=omit_zeros_thresh)
         self.compute_band_structure()
 
     def relax_structure(self, dummy: bool = False) -> None:
