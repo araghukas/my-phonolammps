@@ -288,11 +288,16 @@ class PhononRunner:
     def phl(self) -> MyPhonolammps:
         return self._phl
 
-    def run(self, omit_zeros: bool = True, omit_zeros_thresh: float = 1e-6) -> None:
+    def run(self,
+            omit_zeros: bool = True,
+            omit_zeros_thresh: float = 1e-6,
+            with_eigenvectors: bool = True,
+            with_group_velocities: bool = True) -> None:
         """relax structure, compute forces, and compute phonons"""
         self.relax_structure()
         self.compute_forces(omit_zeros=omit_zeros, omit_zeros_thresh=omit_zeros_thresh)
-        self.compute_band_structure()
+        self.compute_band_structure(with_eigenvectors=with_eigenvectors,
+                                    with_group_velocities=with_group_velocities)
 
     def relax_structure(self, dummy: bool = False) -> None:
         """
@@ -407,7 +412,9 @@ class PhononRunner:
         # delete substituted LAMMPS input file
         os.remove(input_file)
 
-    def compute_band_structure(self) -> None:
+    def compute_band_structure(self,
+                               with_eigenvectors: bool = True,
+                               with_group_velocities: bool = True) -> None:
         """use phonopy to compute band structure and total DOS"""
 
         # aliasing for neatness
@@ -425,7 +432,8 @@ class PhononRunner:
                                                          npoints=self._phonon_npoints)
         self._phonon.run_band_structure(qs,
                                         path_connections=cons,
-                                        with_eigenvectors=True)
+                                        with_eigenvectors=with_eigenvectors,
+                                        with_group_velocities=with_group_velocities)
         self._phonon.write_hdf5_band_structure(filename=band)
 
         self._phonon.run_total_dos()
