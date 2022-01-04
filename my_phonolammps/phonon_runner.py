@@ -218,6 +218,8 @@ class PhononRunner:
                  clean_up=False,
                  trash_counter_max=50):
 
+        self.clean_up = clean_up
+
         # nothing works if these don't exist
         generic_relax = os.path.expanduser(generic_relax)
         if not os.path.isfile(generic_relax):
@@ -242,7 +244,6 @@ class PhononRunner:
             raise FileNotFoundError(f"file not found '{wire_datafile}'")
         self.outputs = PhononOutputFiles(output_dir, marker=marker)
 
-        self.clean_up = clean_up
         self._phonon_path = [[[0., 0., 0.], [0., 0., .5]]]
         self._phonon_mesh = [1, 1, 20]
         self._phonon_npoints = 51
