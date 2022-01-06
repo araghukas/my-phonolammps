@@ -393,7 +393,6 @@ class PhononRunner:
             self.relax_structure(dummy=True)
 
         required_vars = [
-            # TODO: fix these terrible names
             LammpsVarLine("data_file", VarType.STRING, wire_datafile),
             LammpsVarLine("output_file", VarType.STRING, relaxed_datafile),
             LammpsVarLine("potential_file", VarType.STRING, potential_file)
@@ -427,22 +426,30 @@ class PhononRunner:
         dos = self.outputs.dos
         # ---------------------
 
+        _print("loading phonon")
         self._phonon = phonopy_load(supercell_matrix=_ID_MATRIX,
                                     unitcell_filename=unitcell,
                                     force_constants_filename=force_constants)
+        _print("running mesh")
         self._phonon.run_mesh(self._phonon_mesh)
 
+        _print("getting qpoints and connections")
         qs, cons = get_band_qpoints_and_path_connections(band_paths=self._phonon_path,
                                                          npoints=self._phonon_npoints)
+        _print("running band structure")
         self._phonon.run_band_structure(qs,
                                         path_connections=cons,
                                         with_eigenvectors=with_eigenvectors,
                                         with_group_velocities=with_group_velocities)
 
         # use alternate function defined below
+        _print("writing band structure")
         write_hdf5_band_structure(self._phonon, paths=qs, filename=band)
 
+        _print("running total dos")
         self._phonon.run_total_dos()
+
+        _print("writing total dos")
         self._phonon.write_total_dos(filename=dos)
 
     def plot_bands(self) -> Tuple[Figure, Axes]:
@@ -507,17 +514,35 @@ def write_hdf5_band_structure(phonon: Phonopy,
         w.create_dataset('segment_nqpoint', data=nq_paths)
     --------------------------------------------------------------------------------------------
 
-    [?] maybe importing h5py globally will solve the issue, so we can keep it basically the same
+    [X] maybe importing h5py globally will solve the issue, so we can keep it basically the same
+    [?] some ridiculous debugging printouts
     """
+    np.set_printoptions(precision=1, linewidth=300)
 
     bs: BandStructure = phonon.band_structure
+
+    _print("paths: {}".format(paths))
+    _print("distance: {}".format(bs.distances))
+    _print("frequencies: {}".format(bs.frequencies))
+    _print("eigvs: {}".format(bs.eigenvectors))
+    _print("velocities: {}".format(bs.group_velocities))
+
+    _print("opening file")
     with h5py.File(filename, 'w') as w:
+
+        _print("writing paths")
         w.create_dataset('path', data=paths)
+
+        _print("writing distances")
         w.create_dataset('distance', data=bs.distances)
+
+        _print("writing frequencies")
         w.create_dataset('frequency', data=bs.frequencies)
         if bs.eigenvectors is not None:
+            _print("writing eigenvectors")
             w.create_dataset('eigenvector', data=bs.eigenvectors)
         if bs.group_velocities is not None:
+            _print("writing velocities")
             w.create_dataset('group_velocity', data=bs.group_velocities)
         if comment:
             for key in comment:
@@ -543,10 +568,20 @@ def write_hdf5_band_structure(phonon: Phonopy,
                         i += 1
                     else:
                         i += 2
+        _print("writing labels")
         w.create_dataset('label', data=path_labels)
 
         nq_paths = []
         for qpoints in paths:
             nq_paths.append(len(qpoints))
+
+        _print("writing qpoints")
         w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
+
+        _print("writing segmnet_nqpoint")
         w.create_dataset('segment_nqpoint', data=nq_paths)
+
+
+def _print(s: str) -> None:
+    s_ = "\n\n---> my_phonolammps-debug\n"
+    print(s_ + s + "\n\n")
