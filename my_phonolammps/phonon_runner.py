@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-from phonopy import Phonopy, load as phonopy_load
+import phonopy
+from phonopy import Phonopy
 from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections, BandStructure
 
 from my_phonolammps._lammps import MyLammps
@@ -427,9 +428,10 @@ class PhononRunner:
         # ---------------------
 
         _print("loading phonon")
-        self._phonon = phonopy_load(supercell_matrix=_ID_MATRIX,
-                                    unitcell_filename=unitcell,
-                                    force_constants_filename=force_constants)
+        load_kwargs = dict(supercell_matrix=_ID_MATRIX,
+                           unitcell_filename=unitcell,
+                           force_constants_filename=force_constants)
+        self._phonon = phonopy_load(**load_kwargs)
         _print("running mesh")
         self._phonon.run_mesh(self._phonon_mesh)
 
@@ -456,6 +458,190 @@ class PhononRunner:
         """run the default phonopy `plot_band_structure` method"""
         plt = self._phonon.plot_band_structure()
         return plt.gcf(), plt.gca()
+
+
+def phonopy_load(phonopy_yaml=None,
+                 supercell_matrix=None,
+                 primitive_matrix=None,
+                 is_nac=False,  # used to be True
+                 calculator=None,
+                 unitcell=None,
+                 supercell=None,
+                 nac_params=None,
+                 unitcell_filename=None,
+                 supercell_filename=None,
+                 born_filename=None,
+                 force_sets_filename=None,
+                 force_constants_filename=None,
+                 fc_calculator=None,
+                 fc_calculator_options=None,
+                 factor=None,
+                 frequency_scale_factor=None,
+                 produce_fc=True,
+                 is_symmetry=True,
+                 symmetrize_fc=True,
+                 is_compact_fc=True,
+                 symprec=1e-5,
+                 log_level=0) -> Phonopy:
+    """
+    alias for phonopy.cui.load.load, where I've changed some defaults
+
+    ORIGINAL DOCSTRING
+    ------------------------------------------------------------------------------------------------
+    Create Phonopy instance from parameters and/or input files.
+
+    "phonopy_yaml"-like file is parsed unless crystal structure information
+    is given by unitcell_filename, supercell_filename, unitcell
+    (PhonopyAtoms-like), or supercell (PhonopyAtoms-like).
+    Even when "phonopy_yaml"-like file is parse, parameters except for
+    crystal structure can be overwritten.
+
+    Phonopy default files of 'FORCE_SETS' and 'BORN' are parsed when they
+    are found in current directory and those data are not yet provided by
+    other means.
+
+    Crystal structure
+    -----------------
+    Means to provide crystal structure(s) and their priority:
+        1. unitcell_filename (with supercell_matrix)
+        2. supercell_filename
+        3. unitcell (with supercell_matrix)
+        4. supercell.
+        5. phonopy_yaml
+
+    Force sets or force constants
+    -----------------------------
+    Optional. Means to provide information to generate force constants
+    and their priority:
+        1. force_constants_filename
+        2. force_sets_filename
+        3. phonopy_yaml if force constants are found in phonopy_yaml.
+        4. phonopy_yaml if forces are found in phonopy_yaml.dataset.
+        5. 'FORCE_CONSTANTS' is searched in current directory.
+        6. 'force_constants.hdf5' is searched in current directory.
+        7. 'FORCE_SETS' is searched in current directory.
+    When both of 3 and 4 are satisfied but not others, force constants and
+    dataset are stored in Phonopy instance, but force constants are not
+    produced from dataset.
+
+    Parameters for non-analytical term correction (NAC)
+    ----------------------------------------------------
+    Optional. Means to provide NAC parameters and their priority:
+        1. born_filename
+        2. nac_params
+        3. phonopy_yaml.nac_params if existed and is_nac=True.
+        4. 'BORN' is searched in current directory when is_nac=True.
+
+    Parameters
+    ----------
+    phonopy_yaml : str, optional
+        Filename of "phonopy.yaml"-like file. If this is given, the data
+        in the file are parsed. Default is None.
+    supercell_matrix : array_like, optional
+        Supercell matrix multiplied to input cell basis vectors.
+        shape=(3, ) or (3, 3), where the former is considered a diagonal
+        matrix. Default is the unit matrix.
+        dtype=int
+    primitive_matrix : array_like or str, optional
+        Primitive matrix multiplied to input cell basis vectors. Default is
+        None, which is equivalent to 'auto'.
+        For array_like, shape=(3, 3), dtype=float.
+        When 'F', 'I', 'A', 'C', or 'R' is given instead of a 3x3 matrix,
+        the primitive matrix for the character found at
+        https://spglib.github.io/spglib/definition.html
+        is used.
+    is_nac : bool, optional
+        If True, look for 'BORN' file. If False, NAS is turned off.
+        Default is True.
+    calculator : str, optional.
+        Calculator used for computing forces. This is used to switch the set
+        of physical units. Default is None, which is equivalent to "vasp".
+    unitcell : PhonopyAtoms, optional
+        Input unit cell. Default is None.
+    supercell : PhonopyAtoms, optional
+        Input supercell. With given, default value of primitive_matrix is set
+        to 'auto' (can be overwritten). supercell_matrix is ignored. Default is
+        None.
+    nac_params : dict, optional
+        Parameters required for non-analytical term correction. Default is
+        None.
+        {'born': Born effective charges
+                 (array_like, shape=(primitive cell atoms, 3, 3), dtype=float),
+         'dielectric': Dielectric constant matrix
+                       (array_like, shape=(3, 3), dtype=float),
+         'factor': unit conversion factor (float)}
+    unitcell_filename : str, optional
+        Input unit cell filename. Default is None.
+    supercell_filename : str, optional
+        Input supercell filename. When this is specified, supercell_matrix is
+        ignored. Default is None.
+    born_filename : str, optional
+        Filename corresponding to 'BORN', a file contains non-analytical term
+        correction parameters.
+    force_sets_filename : str, optional
+        Filename of a file corresponding to 'FORCE_SETS', a file contains sets
+        of forces and displacements. Default is None.
+    force_constants_filename : str, optional
+        Filename of a file corresponding to 'FORCE_CONSTANTS' or
+        'force_constants.hdf5', a file contains force constants. Default is
+        None.
+    fc_calculator : str, optional
+        Force constants calculator. Currently only 'alm'. Default is None.
+    fc_calculator_options : str, optional
+        Optional parameters that are passed to the external fc-calculator.
+        This is given as one text string. How to parse this depends on the
+        fc-calculator. For alm, each parameter is splitted by comma ',',
+        and each set of key and value pair is written in 'key = value'.
+    factor : float, optional
+        Phonon frequency unit conversion factor. Unless specified, default
+        unit conversion factor for each calculator is used.
+    frequency_scale_factor : float, optional
+        Factor multiplied to calculated phonon frequency. Default is None,
+        i.e., effectively 1.
+    produce_fc : bool, optional
+        Setting False, force constants are not calculated from displacements
+        and forces. Default is True.
+    is_symmetry : bool, optional
+        Setting False, crystal symmetry except for lattice translation is not
+        considered. Default is True.
+    symmetrize_fc : bool, optional
+        Setting False, force constants are not symmetrized when creating
+        force constants from displacements and forces. Default is True.
+    is_compact_fc : bool
+        Force constants are produced in the array whose shape is
+            True: (primitive, supercell, 3, 3)
+            False: (supercell, supercell, 3, 3)
+        where 'supercell' and 'primitive' indicate number of atoms in these
+        cells. Default is True.
+    symprec : float, optional
+        Tolerance used to find crystal symmetry. Default is 1e-5.
+    log_level : int, optional
+        Verbosity control. Default is 0.
+
+    """
+    return phonopy.load(phonopy_yaml=phonopy_yaml,  # phonopy.yaml-like must be the first argument.
+                        supercell_matrix=supercell_matrix,
+                        primitive_matrix=primitive_matrix,
+                        is_nac=is_nac,
+                        calculator=calculator,
+                        unitcell=unitcell,
+                        supercell=supercell,
+                        nac_params=nac_params,
+                        unitcell_filename=unitcell_filename,
+                        supercell_filename=supercell_filename,
+                        born_filename=born_filename,
+                        force_sets_filename=force_sets_filename,
+                        force_constants_filename=force_constants_filename,
+                        fc_calculator=fc_calculator,
+                        fc_calculator_options=fc_calculator_options,
+                        factor=factor,
+                        frequency_scale_factor=frequency_scale_factor,
+                        produce_fc=produce_fc,
+                        is_symmetry=is_symmetry,
+                        symmetrize_fc=symmetrize_fc,
+                        is_compact_fc=is_compact_fc,
+                        symprec=symprec,
+                        log_level=log_level)
 
 
 def write_hdf5_band_structure(phonon: Phonopy,
@@ -578,7 +764,7 @@ def write_hdf5_band_structure(phonon: Phonopy,
         _print("writing qpoints")
         w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
 
-        _print("writing segmnet_nqpoint")
+        _print("writing segment_nqpoint")
         w.create_dataset('segment_nqpoint', data=nq_paths)
 
 
