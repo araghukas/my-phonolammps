@@ -1,6 +1,8 @@
 """A wrapper for running generic lammps scripts with injected variables"""
 import os
 import re
+import h5py
+import numpy as np
 from typing import List, Set, Tuple
 from enum import Enum
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
 from phonopy import Phonopy, load as phonopy_load
-from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
+from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections, BandStructure
 
 from my_phonolammps._lammps import MyLammps
 from my_phonolammps._phonolammps import MyPhonolammps
@@ -423,6 +425,7 @@ class PhononRunner:
         force_constants = self.outputs.force_constants_filename
         band = self.outputs.band
         dos = self.outputs.dos
+        # ---------------------
 
         self._phonon = phonopy_load(supercell_matrix=_ID_MATRIX,
                                     unitcell_filename=unitcell,
@@ -435,7 +438,9 @@ class PhononRunner:
                                         path_connections=cons,
                                         with_eigenvectors=with_eigenvectors,
                                         with_group_velocities=with_group_velocities)
-        self._phonon.write_hdf5_band_structure(filename=band)
+
+        # use alternate function defined below
+        write_hdf5_band_structure(self._phonon, paths=qs, filename=band)
 
         self._phonon.run_total_dos()
         self._phonon.write_total_dos(filename=dos)
@@ -444,3 +449,104 @@ class PhononRunner:
         """run the default phonopy `plot_band_structure` method"""
         plt = self._phonon.plot_band_structure()
         return plt.gcf(), plt.gca()
+
+
+def write_hdf5_band_structure(phonon: Phonopy,
+                              paths: list,
+                              filename: str,
+                              comment: dict = None) -> None:
+    """
+    This is meant to replace the BandStructure method of the same name,
+    because the original crashes with a segfault on my larger cells.
+
+    Below is the method that does the heavy lifting:
+
+        `phonopy.band_structure.BandStructure.write_hdf5()`
+
+    --------------------------------------------------------------------------------------------
+    \"\"\"Write band structure in hdf5 format.\"\"\"
+    import h5py
+    with h5py.File(filename, 'w') as w:
+        w.create_dataset('path', data=self._paths)
+        w.create_dataset('distance', data=self._distances)
+        w.create_dataset('frequency', data=self._frequencies)
+        if self._eigenvectors is not None:
+            w.create_dataset('eigenvector', data=self._eigenvectors)
+        if self._group_velocities is not None:
+            w.create_dataset('group_velocity', data=self._group_velocities)
+        if comment:
+            for key in comment:
+                if key not in ('path',
+                               'distance',
+                               'frequency',
+                               'eigenvector',
+                               'group_velocity'):
+                    w.create_dataset(key, data=np.string_(comment[key]))
+
+        path_labels = []
+        if self._labels:
+            if self._is_legacy_plot:
+                for i in range(len(self._paths)):
+                    path_labels.append([np.string_(self._labels[i]),
+                                        np.string_(self._labels[i + 1])])
+            else:
+                i = 0
+                for c in self._path_connections:
+                    path_labels.append([np.string_(self._labels[i]),
+                                        np.string_(self._labels[i + 1])])
+                    if c:
+                        i += 1
+                    else:
+                        i += 2
+        w.create_dataset('label', data=path_labels)
+
+        nq_paths = []
+        for qpoints in self._paths:
+            nq_paths.append(len(qpoints))
+        w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
+        w.create_dataset('segment_nqpoint', data=nq_paths)
+    --------------------------------------------------------------------------------------------
+
+    [?] maybe importing h5py globally will solve the issue, so we can keep it basically the same
+    """
+
+    bs: BandStructure = phonon.band_structure
+    with h5py.File(filename, 'w') as w:
+        w.create_dataset('path', data=paths)
+        w.create_dataset('distance', data=bs.distances)
+        w.create_dataset('frequency', data=bs.frequencies)
+        if bs.eigenvectors is not None:
+            w.create_dataset('eigenvector', data=bs.eigenvectors)
+        if bs.group_velocities is not None:
+            w.create_dataset('group_velocity', data=bs.group_velocities)
+        if comment:
+            for key in comment:
+                if key not in ('path',
+                               'distance',
+                               'frequency',
+                               'eigenvector',
+                               'group_velocity'):
+                    w.create_dataset(key, data=np.string_(comment[key]))
+
+        path_labels = []
+        if bs.labels:
+            if bs.is_legacy_plot:
+                for i in range(len(paths)):
+                    path_labels.append([np.string_(bs.labels[i]),
+                                        np.string_(bs.labels[i + 1])])
+            else:
+                i = 0
+                for c in bs.path_connections:
+                    path_labels.append([np.string_(bs.labels[i]),
+                                        np.string_(bs.labels[i + 1])])
+                    if c:
+                        i += 1
+                    else:
+                        i += 2
+        w.create_dataset('label', data=path_labels)
+
+        nq_paths = []
+        for qpoints in paths:
+            nq_paths.append(len(qpoints))
+        w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
+        w.create_dataset('segment_nqpoint', data=nq_paths)
