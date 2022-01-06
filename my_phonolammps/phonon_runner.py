@@ -189,6 +189,19 @@ class PhononOutputFiles:
         self.relaxed_unitcell_filename = self.get_path(f"RELAXED_{marker}.data")
         self.marker = marker
 
+    def __repr__(self):
+        return f"""\
+PhononOutputFiles(output_dir='{self.output_dir}',
+                  marker='{self.marker}')
+                  
+                  self.band='{self.band}'
+                  self.dos='{self.dos}'
+                  self.force_constants_filename='{self.force_constants_filename}'
+                  self.harmonic_constants_filename='{self.harmonic_constants_filename}'
+                  self.unitcell_filename='{self.unitcell_filename}'
+                  self.relaxed_unitcell_filename='{self.relaxed_unitcell_filename}'
+                """
+
     def clean_up(self) -> None:
         """delete temporary files"""
         os.remove(self.relaxed_unitcell_filename)
@@ -222,6 +235,7 @@ class PhononRunner:
                  trash_counter_max=50):
 
         self.clean_up = clean_up
+        self._trash_counter_max = trash_counter_max
 
         # nothing works if these don't exist
         generic_relax = os.path.expanduser(generic_relax)
@@ -252,7 +266,24 @@ class PhononRunner:
         self._phonon_npoints = 51
         self._phonon = None
         self._phl = None
-        self._trash_counter_max = trash_counter_max
+
+    def __repr__(self):
+        return f"""\
+PhononRunner(wire_datafile='{self.wire_datafile}',
+             potential_file='{self.potential_file}',
+             output_dir='{self.outputs.output_dir}',
+             generic_relax='{self.generic_relax}',
+             generic_in='{self.generic_in}',
+             marker='{self.outputs.marker}',
+             clean_up={self.clean_up},
+             trash_counter_max={self._trash_counter_max})
+             
+             self.phonon_path={self.phonon_path if self.phonon_path else None}
+             self.phonon_mesh={self.phonon_mesh if self.phonon_mesh else None}
+             self.phonon_npoints={self.phonon_npoints if self.phonon_npoints else None}
+             self.phl={self._phl if self._phl else None}
+             self.outputs={self.outputs}
+            """
 
     def __del__(self):
         if self.clean_up:
