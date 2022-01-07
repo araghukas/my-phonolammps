@@ -29,10 +29,12 @@ class MyDynamicalMatrix(DynamicalMatrix):
                          force_constants=force_constants,
                          decimals=decimals)
 
+        self._debug_printout_counter = 0
+
     def _print_debug(self):
         print(
             f"""\
-MyDynamicalMatrix
+MyDynamicalMatrix {self._debug_printout_counter}
 [
 self._force_constants.shape={self._force_constants.shape}
 self._svecs.shape={self._svecs.shape}
@@ -44,6 +46,7 @@ self._pcell.p2s_map.shape={self._pcell.p2s_map.shape}
 self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
 ]
             """)
+        self._debug_printout_counter += 1
 
     def _run_py_dynamical_matrix(self, q):
         self._print_debug()
