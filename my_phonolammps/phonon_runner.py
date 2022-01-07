@@ -464,7 +464,9 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
                            force_constants_filename=force_constants)
         self._phonon = phonopy_load(**load_kwargs)
         _print("running mesh")
-        self._phonon.run_mesh(self._phonon_mesh)
+        self._phonon.run_mesh(self._phonon_mesh,
+                              with_eigenvectors=with_eigenvectors,
+                              with_group_velocities=with_group_velocities)
 
         _print("getting qpoints and connections")
         qs, cons = get_band_qpoints_and_path_connections(band_paths=self._phonon_path,
