@@ -263,7 +263,7 @@ class PhononRunner:
 
         self._phonon_path = [[[0., 0., 0.], [0., 0., .5]]]
         self._phonon_mesh = [1, 1, 20]
-        self._phonon_npoints = 51
+        self._nqpoints = 51
         self._phonon = None
         self._phl = None
 
@@ -280,7 +280,7 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
              
              self.phonon_path={self.phonon_path if self.phonon_path else None}
              self.phonon_mesh={self.phonon_mesh if self.phonon_mesh else None}
-             self.phonon_npoints={self.phonon_npoints if self.phonon_npoints else None}
+             self.nqpoints={self.nqpoints if self.nqpoints else None}
              self.phl={self._phl if self._phl else None}
              self.outputs={self.outputs}
             """
@@ -308,12 +308,12 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         self._phonon_mesh = [int(n) for n in _mesh]
 
     @property
-    def phonon_npoints(self):
-        return self._phonon_npoints
+    def nqpoints(self):
+        return self._nqpoints
 
-    @phonon_npoints.setter
-    def phonon_npoints(self, _npoints):
-        self._phonon_npoints = int(_npoints)
+    @nqpoints.setter
+    def nqpoints(self, _npoints):
+        self._nqpoints = int(_npoints)
 
     @property
     def phonon(self) -> Phonopy:
@@ -468,7 +468,7 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
 
         _print("getting qpoints and connections")
         qs, cons = get_band_qpoints_and_path_connections(band_paths=self._phonon_path,
-                                                         npoints=self._phonon_npoints)
+                                                         npoints=self._nqpoints)
         _print("running band structure")
         self._phonon.run_band_structure(qs,
                                         path_connections=cons,
