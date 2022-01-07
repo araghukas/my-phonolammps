@@ -1,20 +1,21 @@
 """A wrapper for running generic lammps scripts with injected variables"""
 import os
 import re
-import h5py
-import numpy as np
 from typing import List, Set, Tuple
 from enum import Enum
 from dataclasses import dataclass
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-import phonopy
-from phonopy import Phonopy
-from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections, BandStructure
+from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
+
+from my_phonolammps._phonopy_overrides import (write_hdf5_band_structure,
+                                               my_phonopy_load,
+                                               MyPhonopy)
 
 from my_phonolammps._lammps import MyLammps
 from my_phonolammps._phonolammps import MyPhonolammps
+from my_phonolammps.util import _print
 
 _ID_MATRIX = [[1, 0, 0],
               [0, 1, 0],
@@ -316,7 +317,7 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         self._nqpoints = int(_npoints)
 
     @property
-    def phonon(self) -> Phonopy:
+    def phonon(self) -> MyPhonopy:
         return self._phonon
 
     @property
@@ -448,7 +449,8 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
 
     def compute_band_structure(self,
                                with_eigenvectors: bool = True,
-                               with_group_velocities: bool = True) -> None:
+                               with_group_velocities: bool = True,
+                               use_C_library: bool = True) -> None:
         """use phonopy to compute band structure and total DOS"""
 
         # aliasing for neatness
@@ -462,7 +464,7 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         load_kwargs = dict(supercell_matrix=_ID_MATRIX,
                            unitcell_filename=unitcell,
                            force_constants_filename=force_constants)
-        self._phonon = phonopy_load(**load_kwargs)
+        self._phonon = my_phonopy_load(**load_kwargs)
         _print("running mesh")
         self._phonon.run_mesh(self._phonon_mesh,
                               with_eigenvectors=with_eigenvectors,
@@ -475,7 +477,8 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         self._phonon.run_band_structure(qs,
                                         path_connections=cons,
                                         with_eigenvectors=with_eigenvectors,
-                                        with_group_velocities=with_group_velocities)
+                                        with_group_velocities=with_group_velocities,
+                                        use_C_library=use_C_library)
 
         # use alternate function defined below
         _print("writing band structure")
@@ -491,316 +494,3 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         """run the default phonopy `plot_band_structure` method"""
         plt = self._phonon.plot_band_structure()
         return plt.gcf(), plt.gca()
-
-
-def phonopy_load(phonopy_yaml=None,
-                 supercell_matrix=None,
-                 primitive_matrix=None,
-                 is_nac=False,  # used to be True
-                 calculator=None,
-                 unitcell=None,
-                 supercell=None,
-                 nac_params=None,
-                 unitcell_filename=None,
-                 supercell_filename=None,
-                 born_filename=None,
-                 force_sets_filename=None,
-                 force_constants_filename=None,
-                 fc_calculator=None,
-                 fc_calculator_options=None,
-                 factor=None,
-                 frequency_scale_factor=None,
-                 produce_fc=True,
-                 is_symmetry=True,
-                 symmetrize_fc=True,
-                 is_compact_fc=True,
-                 symprec=1e-5,
-                 log_level=0) -> Phonopy:
-    """
-    alias for phonopy.cui.load.load, where I've changed some defaults
-
-    ORIGINAL DOCSTRING
-    ------------------------------------------------------------------------------------------------
-    Create Phonopy instance from parameters and/or input files.
-
-    "phonopy_yaml"-like file is parsed unless crystal structure information
-    is given by unitcell_filename, supercell_filename, unitcell
-    (PhonopyAtoms-like), or supercell (PhonopyAtoms-like).
-    Even when "phonopy_yaml"-like file is parse, parameters except for
-    crystal structure can be overwritten.
-
-    Phonopy default files of 'FORCE_SETS' and 'BORN' are parsed when they
-    are found in current directory and those data are not yet provided by
-    other means.
-
-    Crystal structure
-    -----------------
-    Means to provide crystal structure(s) and their priority:
-        1. unitcell_filename (with supercell_matrix)
-        2. supercell_filename
-        3. unitcell (with supercell_matrix)
-        4. supercell.
-        5. phonopy_yaml
-
-    Force sets or force constants
-    -----------------------------
-    Optional. Means to provide information to generate force constants
-    and their priority:
-        1. force_constants_filename
-        2. force_sets_filename
-        3. phonopy_yaml if force constants are found in phonopy_yaml.
-        4. phonopy_yaml if forces are found in phonopy_yaml.dataset.
-        5. 'FORCE_CONSTANTS' is searched in current directory.
-        6. 'force_constants.hdf5' is searched in current directory.
-        7. 'FORCE_SETS' is searched in current directory.
-    When both of 3 and 4 are satisfied but not others, force constants and
-    dataset are stored in Phonopy instance, but force constants are not
-    produced from dataset.
-
-    Parameters for non-analytical term correction (NAC)
-    ----------------------------------------------------
-    Optional. Means to provide NAC parameters and their priority:
-        1. born_filename
-        2. nac_params
-        3. phonopy_yaml.nac_params if existed and is_nac=True.
-        4. 'BORN' is searched in current directory when is_nac=True.
-
-    Parameters
-    ----------
-    phonopy_yaml : str, optional
-        Filename of "phonopy.yaml"-like file. If this is given, the data
-        in the file are parsed. Default is None.
-    supercell_matrix : array_like, optional
-        Supercell matrix multiplied to input cell basis vectors.
-        shape=(3, ) or (3, 3), where the former is considered a diagonal
-        matrix. Default is the unit matrix.
-        dtype=int
-    primitive_matrix : array_like or str, optional
-        Primitive matrix multiplied to input cell basis vectors. Default is
-        None, which is equivalent to 'auto'.
-        For array_like, shape=(3, 3), dtype=float.
-        When 'F', 'I', 'A', 'C', or 'R' is given instead of a 3x3 matrix,
-        the primitive matrix for the character found at
-        https://spglib.github.io/spglib/definition.html
-        is used.
-    is_nac : bool, optional
-        If True, look for 'BORN' file. If False, NAS is turned off.
-        Default is True.
-    calculator : str, optional.
-        Calculator used for computing forces. This is used to switch the set
-        of physical units. Default is None, which is equivalent to "vasp".
-    unitcell : PhonopyAtoms, optional
-        Input unit cell. Default is None.
-    supercell : PhonopyAtoms, optional
-        Input supercell. With given, default value of primitive_matrix is set
-        to 'auto' (can be overwritten). supercell_matrix is ignored. Default is
-        None.
-    nac_params : dict, optional
-        Parameters required for non-analytical term correction. Default is
-        None.
-        {'born': Born effective charges
-                 (array_like, shape=(primitive cell atoms, 3, 3), dtype=float),
-         'dielectric': Dielectric constant matrix
-                       (array_like, shape=(3, 3), dtype=float),
-         'factor': unit conversion factor (float)}
-    unitcell_filename : str, optional
-        Input unit cell filename. Default is None.
-    supercell_filename : str, optional
-        Input supercell filename. When this is specified, supercell_matrix is
-        ignored. Default is None.
-    born_filename : str, optional
-        Filename corresponding to 'BORN', a file contains non-analytical term
-        correction parameters.
-    force_sets_filename : str, optional
-        Filename of a file corresponding to 'FORCE_SETS', a file contains sets
-        of forces and displacements. Default is None.
-    force_constants_filename : str, optional
-        Filename of a file corresponding to 'FORCE_CONSTANTS' or
-        'force_constants.hdf5', a file contains force constants. Default is
-        None.
-    fc_calculator : str, optional
-        Force constants calculator. Currently only 'alm'. Default is None.
-    fc_calculator_options : str, optional
-        Optional parameters that are passed to the external fc-calculator.
-        This is given as one text string. How to parse this depends on the
-        fc-calculator. For alm, each parameter is splitted by comma ',',
-        and each set of key and value pair is written in 'key = value'.
-    factor : float, optional
-        Phonon frequency unit conversion factor. Unless specified, default
-        unit conversion factor for each calculator is used.
-    frequency_scale_factor : float, optional
-        Factor multiplied to calculated phonon frequency. Default is None,
-        i.e., effectively 1.
-    produce_fc : bool, optional
-        Setting False, force constants are not calculated from displacements
-        and forces. Default is True.
-    is_symmetry : bool, optional
-        Setting False, crystal symmetry except for lattice translation is not
-        considered. Default is True.
-    symmetrize_fc : bool, optional
-        Setting False, force constants are not symmetrized when creating
-        force constants from displacements and forces. Default is True.
-    is_compact_fc : bool
-        Force constants are produced in the array whose shape is
-            True: (primitive, supercell, 3, 3)
-            False: (supercell, supercell, 3, 3)
-        where 'supercell' and 'primitive' indicate number of atoms in these
-        cells. Default is True.
-    symprec : float, optional
-        Tolerance used to find crystal symmetry. Default is 1e-5.
-    log_level : int, optional
-        Verbosity control. Default is 0.
-
-    """
-    return phonopy.load(phonopy_yaml=phonopy_yaml,  # phonopy.yaml-like must be the first argument.
-                        supercell_matrix=supercell_matrix,
-                        primitive_matrix=primitive_matrix,
-                        is_nac=is_nac,
-                        calculator=calculator,
-                        unitcell=unitcell,
-                        supercell=supercell,
-                        nac_params=nac_params,
-                        unitcell_filename=unitcell_filename,
-                        supercell_filename=supercell_filename,
-                        born_filename=born_filename,
-                        force_sets_filename=force_sets_filename,
-                        force_constants_filename=force_constants_filename,
-                        fc_calculator=fc_calculator,
-                        fc_calculator_options=fc_calculator_options,
-                        factor=factor,
-                        frequency_scale_factor=frequency_scale_factor,
-                        produce_fc=produce_fc,
-                        is_symmetry=is_symmetry,
-                        symmetrize_fc=symmetrize_fc,
-                        is_compact_fc=is_compact_fc,
-                        symprec=symprec,
-                        log_level=log_level)
-
-
-def write_hdf5_band_structure(phonon: Phonopy,
-                              paths: list,
-                              filename: str,
-                              comment: dict = None) -> None:
-    """
-    This is meant to replace the BandStructure method of the same name,
-    because the original crashes with a segfault on my larger cells.
-
-    Below is the method that does the heavy lifting:
-
-        `phonopy.band_structure.BandStructure.write_hdf5()`
-
-    --------------------------------------------------------------------------------------------
-    \"\"\"Write band structure in hdf5 format.\"\"\"
-    import h5py
-    with h5py.File(filename, 'w') as w:
-        w.create_dataset('path', data=self._paths)
-        w.create_dataset('distance', data=self._distances)
-        w.create_dataset('frequency', data=self._frequencies)
-        if self._eigenvectors is not None:
-            w.create_dataset('eigenvector', data=self._eigenvectors)
-        if self._group_velocities is not None:
-            w.create_dataset('group_velocity', data=self._group_velocities)
-        if comment:
-            for key in comment:
-                if key not in ('path',
-                               'distance',
-                               'frequency',
-                               'eigenvector',
-                               'group_velocity'):
-                    w.create_dataset(key, data=np.string_(comment[key]))
-
-        path_labels = []
-        if self._labels:
-            if self._is_legacy_plot:
-                for i in range(len(self._paths)):
-                    path_labels.append([np.string_(self._labels[i]),
-                                        np.string_(self._labels[i + 1])])
-            else:
-                i = 0
-                for c in self._path_connections:
-                    path_labels.append([np.string_(self._labels[i]),
-                                        np.string_(self._labels[i + 1])])
-                    if c:
-                        i += 1
-                    else:
-                        i += 2
-        w.create_dataset('label', data=path_labels)
-
-        nq_paths = []
-        for qpoints in self._paths:
-            nq_paths.append(len(qpoints))
-        w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
-        w.create_dataset('segment_nqpoint', data=nq_paths)
-    --------------------------------------------------------------------------------------------
-
-    [X] maybe importing h5py globally will solve the issue, so we can keep it basically the same
-    [?] some ridiculous debugging printouts
-    """
-    np.set_printoptions(precision=1, linewidth=300)
-
-    bs: BandStructure = phonon.band_structure
-
-    _print("paths: {}".format(paths))
-    _print("distance: {}".format(bs.distances))
-    _print("frequencies: {}".format(bs.frequencies))
-    _print("eigvs: {}".format(bs.eigenvectors))
-    _print("velocities: {}".format(bs.group_velocities))
-
-    _print("opening file")
-    with h5py.File(filename, 'w') as w:
-
-        _print("writing paths")
-        w.create_dataset('path', data=paths)
-
-        _print("writing distances")
-        w.create_dataset('distance', data=bs.distances)
-
-        _print("writing frequencies")
-        w.create_dataset('frequency', data=bs.frequencies)
-        if bs.eigenvectors is not None:
-            _print("writing eigenvectors")
-            w.create_dataset('eigenvector', data=bs.eigenvectors)
-        if bs.group_velocities is not None:
-            _print("writing velocities")
-            w.create_dataset('group_velocity', data=bs.group_velocities)
-        if comment:
-            for key in comment:
-                if key not in ('path',
-                               'distance',
-                               'frequency',
-                               'eigenvector',
-                               'group_velocity'):
-                    w.create_dataset(key, data=np.string_(comment[key]))
-
-        path_labels = []
-        if bs.labels:
-            if bs.is_legacy_plot:
-                for i in range(len(paths)):
-                    path_labels.append([np.string_(bs.labels[i]),
-                                        np.string_(bs.labels[i + 1])])
-            else:
-                i = 0
-                for c in bs.path_connections:
-                    path_labels.append([np.string_(bs.labels[i]),
-                                        np.string_(bs.labels[i + 1])])
-                    if c:
-                        i += 1
-                    else:
-                        i += 2
-        _print("writing labels")
-        w.create_dataset('label', data=path_labels)
-
-        nq_paths = []
-        for qpoints in paths:
-            nq_paths.append(len(qpoints))
-
-        _print("writing qpoints")
-        w.create_dataset('nqpoint', data=[np.sum(nq_paths)])
-
-        _print("writing segment_nqpoint")
-        w.create_dataset('segment_nqpoint', data=nq_paths)
-
-
-def _print(s: str) -> None:
-    s_ = "\n\n---> my_phonolammps-debug\n"
-    print(s_ + s + "\n\n")
