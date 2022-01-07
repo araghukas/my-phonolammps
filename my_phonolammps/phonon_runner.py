@@ -1,217 +1,24 @@
 """A wrapper for running generic lammps scripts with injected variables"""
 import os
-import re
-from typing import List, Set, Tuple
-from enum import Enum
-from dataclasses import dataclass
+from typing import Tuple
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
+from phonopy import Phonopy
 from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
 
 from my_phonolammps._phonopy_overrides import (write_hdf5_band_structure,
                                                my_phonopy_load,
                                                MyPhonopy)
-
-from my_phonolammps._lammps import MyLammps
 from my_phonolammps._phonolammps import MyPhonolammps
+
 from my_phonolammps.util import _print
+from my_phonolammps.phonon_outputs import PhononOutputFiles
+from my_phonolammps.lammps_runner import LammpsRunner, LammpsVarLine, VarType
 
 _ID_MATRIX = [[1, 0, 0],
               [0, 1, 0],
               [0, 0, 1]]
-
-
-class VarType(Enum):
-    """enum of LAMMPS variable declaration types"""
-    STRING = "string"
-    EQUAL = "equal"
-
-
-class MissingVarError(Exception):
-    """raised when insufficient arguments passed for undefined LAMMPS input variables"""
-
-
-@dataclass(frozen=True)
-class LammpsVarLine:
-    """
-    Represents a LAMMPS command line of the sort:
-        variable varname equal 123.321 or variable string file_name "file.txt"
-
-    Convert instances to `str` in order to access these lines.
-    """
-
-    name: str
-    typ: VarType
-    value: str
-
-    def __str__(self):
-        """return the complete LAMMPS line"""
-        if self.typ is VarType.STRING:
-            return f"variable {self.name} {self.typ.value} \"{self.value}\"\n"
-        return f"variable {self.name} {self.typ.value} {self.value}\n"
-
-
-class LammpsRunner:
-    """runs generic LAMMPS scripts after making the variable injections"""
-    generic_lmp: str
-    required_vars: List[LammpsVarLine]
-
-    def __init__(self, generic_lmp, required_vars):
-        generic_lmp = os.path.expanduser(generic_lmp)
-        if os.path.isfile(generic_lmp):
-            self.generic_lmp = generic_lmp
-        else:
-            raise FileNotFoundError(f"'{generic_lmp}' does not exist")
-        self.required_vars = required_vars
-        self._validate_provided_vars()
-        self._commands_list = None
-
-    @property
-    def commands_list(self):
-        if self._commands_list is None:
-            self._commands_list = self._generate_commands_list()
-        return self._commands_list
-
-    def run(self,
-            append_commands: List[str] = None,
-            skip_lines: List[int] = None,
-            skip_keywords: List[str] = None) -> None:
-        """inject variables and run the resulting script"""
-        if append_commands is None:
-            append_commands = []
-
-        lmp = MyLammps()
-        commands_list = self._get_skipped_commands_list(skip_lines, skip_keywords)
-        commands_list += append_commands
-
-        self._commands_list = commands_list
-        lmp.commands_list(self._commands_list)
-        lmp.close()
-
-    def write_final_script(self, filename: str = None) -> str:
-        """write copy of the final script"""
-        if filename is None:
-            filename = f"in_{MyPhonolammps.get_random_id_string(12)}.lammps"
-
-        with open(filename, 'w') as _file:
-            _file.write("".join(self.commands_list))
-
-        return filename
-
-    def _generate_commands_list(self) -> List[str]:
-        """generate list of commands to pass to `lammps.lammps.commands_list`"""
-        commands_list = [str(v_line) for v_line in self.required_vars]
-        with open(self.generic_lmp) as _file:
-            commands_list += _file.readlines()
-        return commands_list
-
-    def _validate_provided_vars(self) -> None:
-        """check that required vars contains all undefined variables"""
-        provided_var_names = {v.name for v in self.required_vars}
-        undefined_var_names = self._find_undefined_vars()
-        var_set_diff = undefined_var_names - provided_var_names
-        if len(var_set_diff) > 0:
-            msg = "missing variables: "
-            for var_name in var_set_diff:
-                msg += f"'{var_name}', "
-            msg += f"for input file '{self.generic_lmp}'"
-            raise MissingVarError(msg)
-
-    def _find_undefined_vars(self) -> Set[str]:
-        """find undefined variables in the generic lammps script"""
-        with open(self.generic_lmp) as _file:
-            ss = "".join(_file.readlines())
-
-        var_decs = re.findall("^variable.*", ss, flags=re.MULTILINE)
-        declared = {}
-        for var_dec in var_decs:
-            name = var_dec.split()[1].strip()
-            declared[name] = None
-
-        var_evaluations = []
-        for s in ss:
-            if not s.startswith('#'):
-                var_evals = re.findall(r"(\${\w+}|\$\w+)", s)
-                for var_eval in var_evals:
-                    var_evaluations.append(var_eval.strip("${}"))
-
-        return {v for v in var_evaluations if v not in declared}
-
-    def _get_skipped_commands_list(self,
-                                   skip_lines: List[int],
-                                   skip_keywords: List[str]) -> List[str]:
-        """selectively delete certain commands from the input file"""
-        # first, exclude any lines indexed in `skip_lines`
-        raw_commands_list = self.commands_list
-        commands_list = []
-        skip_lines = [] if skip_lines is None else skip_lines
-        for i, command in enumerate(raw_commands_list):
-            if i not in skip_lines:
-                commands_list.append(command)
-
-        # exclude any lines starting with `skip_keywords` items
-        raw_commands_list = commands_list
-        commands_list = []
-        skip_keywords = [] if skip_keywords is None else skip_keywords
-        skip_keywords = [kw + " " for kw in skip_keywords
-                         if not (kw.endswith(' ') or kw.endswith('\n'))]
-
-        for command in raw_commands_list:
-            match = False
-            for kw in skip_keywords:
-                if command.startswith(kw):
-                    match = True
-                    break
-            if not match:
-                commands_list.append(command)
-
-        return commands_list
-
-
-class PhononOutputFiles:
-    """manages output files of phonon calculations"""
-    output_dir: str
-    marker: str
-
-    def __init__(self, output_dir, marker: str):
-
-        output_dir = os.path.expanduser(output_dir)
-        if os.path.isdir(output_dir):
-            self.output_dir = output_dir
-        else:
-            raise FileNotFoundError(f"invalid output directory '{output_dir}'")
-
-        self.band = self.get_path(f"band_{marker}.hdf5")
-        self.dos = self.get_path(f"dos_{marker}.dat")
-        self.force_constants_filename = self.get_path(f"FC_{marker}")
-        self.harmonic_constants_filename = self.get_path(f"HC_{marker}")
-        self.unitcell_filename = self.get_path(f"UC_{marker}")
-        self.relaxed_unitcell_filename = self.get_path(f"RELAXED_{marker}.data")
-        self.marker = marker
-
-    def __repr__(self):
-        return f"""\
-PhononOutputFiles(output_dir='{self.output_dir}',
-                  marker='{self.marker}')
-                  
-                  self.band='{self.band}'
-                  self.dos='{self.dos}'
-                  self.force_constants_filename='{self.force_constants_filename}'
-                  self.harmonic_constants_filename='{self.harmonic_constants_filename}'
-                  self.unitcell_filename='{self.unitcell_filename}'
-                  self.relaxed_unitcell_filename='{self.relaxed_unitcell_filename}'
-                """
-
-    def clean_up(self) -> None:
-        """delete temporary files"""
-        os.remove(self.relaxed_unitcell_filename)
-        os.remove(self.force_constants_filename)
-        os.remove(self.unitcell_filename)
-
-    def get_path(self, filename: str) -> str:
-        """create and return a path in the output directory"""
-        return os.path.join(self.output_dir, filename)
 
 
 class PhononRunner:
@@ -291,6 +98,21 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
             self.outputs.clean_up()
 
     @property
+    def phonon(self) -> MyPhonopy:
+        if self._phonon is None:
+            _print("loading phonon")
+            load_kwargs = dict(supercell_matrix=_ID_MATRIX,
+                               unitcell_filename=self.outputs.unitcell_filename,
+                               force_constants_filename=self.outputs.force_constants_filename)
+            self._phonon = my_phonopy_load(**load_kwargs)
+        return self._phonon
+
+    @phonon.setter
+    def phonon(self, ph: Phonopy):
+        if isinstance(ph, Phonopy):
+            self._phonon = ph
+
+    @property
     def phonon_path(self):
         return self._phonon_path
 
@@ -315,10 +137,6 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
     @nqpoints.setter
     def nqpoints(self, _npoints):
         self._nqpoints = int(_npoints)
-
-    @property
-    def phonon(self) -> MyPhonopy:
-        return self._phonon
 
     @property
     def phl(self) -> MyPhonolammps:
@@ -447,50 +265,51 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         # delete substituted LAMMPS input file
         os.remove(input_file)
 
+    def run_mesh(self,
+                 with_eigenvectors: bool = True,
+                 with_group_velocities: bool = True) -> None:
+        """run the mesh on the phonon attribute"""
+        _print("running mesh")
+        self.phonon.run_mesh(self._phonon_mesh,
+                             with_eigenvectors=with_eigenvectors,
+                             with_group_velocities=with_group_velocities)
+
     def compute_band_structure(self,
                                with_eigenvectors: bool = True,
                                with_group_velocities: bool = True,
                                use_C_library: bool = True) -> None:
-        """use phonopy to compute band structure and total DOS"""
-
-        # aliasing for neatness
-        unitcell = self.outputs.unitcell_filename
-        force_constants = self.outputs.force_constants_filename
-        band = self.outputs.band
-        dos = self.outputs.dos
-        # ---------------------
-
-        _print("loading phonon")
-        load_kwargs = dict(supercell_matrix=_ID_MATRIX,
-                           unitcell_filename=unitcell,
-                           force_constants_filename=force_constants)
-        self._phonon = my_phonopy_load(**load_kwargs)
-        _print("running mesh")
-        self._phonon.run_mesh(self._phonon_mesh,
-                              with_eigenvectors=with_eigenvectors,
-                              with_group_velocities=with_group_velocities)
+        """use phonopy to compute band structure"""
+        if self.phonon.mesh is None:
+            self.run_mesh(with_eigenvectors, with_group_velocities)
 
         _print("getting qpoints and connections")
         qs, cons = get_band_qpoints_and_path_connections(band_paths=self._phonon_path,
                                                          npoints=self._nqpoints)
         _print("running band structure")
-        self._phonon.run_band_structure(qs,
-                                        path_connections=cons,
-                                        with_eigenvectors=with_eigenvectors,
-                                        with_group_velocities=with_group_velocities,
-                                        use_C_library=use_C_library)
+        self.phonon.run_band_structure(qs,
+                                       path_connections=cons,
+                                       with_eigenvectors=with_eigenvectors,
+                                       with_group_velocities=with_group_velocities,
+                                       use_C_library=use_C_library)
 
         # use alternate function defined below
         _print("writing band structure")
-        write_hdf5_band_structure(self._phonon, paths=qs, filename=band)
+        write_hdf5_band_structure(self.phonon, paths=qs, filename=self.outputs.band)
+
+    def compute_total_dos(self,
+                          with_eigenvectors: bool = True,
+                          with_group_velocities: bool = True):
+        """use phonopy to compute the total DOS"""
+        if self.phonon.mesh is None:
+            self.run_mesh(with_eigenvectors, with_group_velocities)
 
         _print("running total dos")
-        self._phonon.run_total_dos()
+        self.phonon.run_total_dos()
 
         _print("writing total dos")
-        self._phonon.write_total_dos(filename=dos)
+        self.phonon.write_total_dos(filename=self.outputs.dos)
 
     def plot_bands(self) -> Tuple[Figure, Axes]:
         """run the default phonopy `plot_band_structure` method"""
-        plt = self._phonon.plot_band_structure()
+        plt = self.phonon.plot_band_structure()
         return plt.gcf(), plt.gca()
