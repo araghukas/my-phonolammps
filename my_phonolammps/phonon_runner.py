@@ -282,6 +282,8 @@ PhononRunner(wire_datafile='{self.wire_datafile}',
         if self.phonon.mesh is None:
             self.run_mesh(with_eigenvectors, with_group_velocities)
 
+        _print(self.phonon.dynamical_matrix.__repr__())
+
         _print("getting qpoints and connections")
         qs, cons = get_band_qpoints_and_path_connections(band_paths=self._phonon_path,
                                                          npoints=self._nqpoints)

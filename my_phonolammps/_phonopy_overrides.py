@@ -17,7 +17,12 @@ from my_phonolammps.util import _print
 
 
 class MyDynamicalMatrix(DynamicalMatrix):
-    """extend the phonopy DynamicalMatrix class to implement ad-hoc fixes to my problems"""
+    """
+    Extend the phonopy DynamicalMatrix class to implement ad-hoc fixes to my problems.
+
+    Added some debugging features, but the functionality remains the same.
+    Rewrote _set_force_constants method
+    """
 
     _PRINT = False
 
@@ -33,11 +38,8 @@ class MyDynamicalMatrix(DynamicalMatrix):
 
         self._debug_printout_counter = 0
 
-    def _print_debug(self):
-        if not MyDynamicalMatrix._PRINT:
-            return
-        print(
-            f"""\
+    def __repr__(self):
+        return f"""\
 MyDynamicalMatrix (debug call {self._debug_printout_counter})
 [
 self._force_constants.shape={self._force_constants.shape}
@@ -49,12 +51,70 @@ len(self._pcell.masses)={len(self._pcell.masses)}
 self._pcell.p2s_map.shape={self._pcell.p2s_map.shape}
 self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
 ]
-            """)
+            """
+
+    def _print_debug(self):
+        if not MyDynamicalMatrix._PRINT:
+            return
+        print(self)
         self._debug_printout_counter += 1
 
+    def _set_force_constants(self, fc: np.ndarray):
+        """overriding this to just force a contiguous array every time"""
+        self._force_constants = np.ascontiguousarray(fc, dtype=np.double)
+
     def _run_py_dynamical_matrix(self, q):
+        """
+        overriding this to try and fix the numpy segfaults issue
+
+        ORIGINAL DOCSTRING
+        --------------------------------------------------------------------------------------------
+        Python implementation of building dynamical matrix.
+
+        This is not used in production.
+        This works only with full-fc.
+        """
         self._print_debug()
-        super()._run_py_dynamical_matrix(q)
+
+        fc = self._force_constants
+        svecs = self._svecs
+        multi = self._multi
+        num_atom = len(self._pcell)
+        # dm = np.zeros((3 * num_atom, 3 * num_atom), dtype=self._dtype_complex)
+        dm = np.zeros((3 * num_atom, 3 * num_atom), dtype=np.complex)
+        mass = self._pcell.masses
+        if fc.shape[0] == fc.shape[1]:
+            is_compact_fc = False
+        else:
+            is_compact_fc = True
+
+        for i, s_i in enumerate(self._pcell.p2s_map):
+            if is_compact_fc:
+                fc_elem = fc[i]
+            else:
+                fc_elem = fc[s_i]
+            for j, s_j in enumerate(self._pcell.p2s_map):
+                sqrt_mm = np.sqrt(mass[i] * mass[j])
+                # dm_local = np.zeros((3, 3), dtype=self._dtype_complex)
+                dm_local = np.zeros((3, 3), dtype=np.complex)
+
+                # Sum in lattice points
+                for k in range(len(self._scell)):
+                    if s_j == self._s2p_map[k]:
+                        m, adrs = multi[k][i]
+                        svecs_at = svecs[adrs: adrs + m]
+                        phase = []
+                        for ll in range(m):
+                            vec = svecs_at[ll]
+                            phase.append(np.vdot(vec, q) * 2j * np.pi)
+                        phase_factor = np.exp(phase).sum()
+                        dm_local += fc_elem[k] * phase_factor / sqrt_mm / m
+
+                # dm[(i * 3): (i * 3 + 3), (j * 3): (j * 3 + 3)] += dm_local
+                dm[(i * 3): (i * 3 + 3), (j * 3): (j * 3 + 3)] = dm_local
+
+        # Impose Hermitian condition
+        self._dynamical_matrix = (dm + dm.conj().transpose()) / 2
 
     def _run_c_dynamical_matrix(self, q):
         self._print_debug()
@@ -66,7 +126,15 @@ self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
 
 
 class MyBandStructure(BandStructure):
-    """extend the phonopy BandStructure class to implement ad-hoc fixes to my problems"""
+    """
+    Extend the phonopy BandStructure class to implement ad-hoc fixes to my problems.
+
+    This subclass does essentially the same thing, except it has a `use_C_library`
+    attribute that tells it to use either the C-extension of pure Python when
+    running the dynamical matrix at a given q-point.
+
+    Also, NAC is disabled here.
+    """
 
     def __init__(self,
                  paths,
@@ -165,7 +233,12 @@ class MyBandStructure(BandStructure):
 
 
 class MyPhonopy(Phonopy):
-    """extend the Phonopy class to implement ad-hoc fixes to my problems"""
+    """
+    Extend the Phonopy class to implement ad-hoc fixes to my problems.
+
+    Modified to pass `use_C_library` to MyBandStructure.
+    Modified to assign a MyDynamicalMatrix instance in `_set_dynamical_matrix()`
+    """
 
     def run_band_structure(self,
                            paths,
@@ -176,8 +249,8 @@ class MyPhonopy(Phonopy):
                            is_legacy_plot=False,
                            use_C_library: bool = True):
         """
-        override run band structure to add option for choosing C or Python routine
-        for running the dynamical matrix at whatever 'q'
+        Override run band structure to add option for choosing C or Python routine
+        for running the dynamical matrix at whatever 'q'.
 
         ORIGINAL DOCSTRING
         --------------------------------------------------------------------------------------------
@@ -212,8 +285,9 @@ class MyPhonopy(Phonopy):
         --------------------------------------------------------------------------------------------
         use_C_library: bool, optional
             The DynamicalMatrix.run() method will be called with lang="C" if this is true,
-            otherwise the python solver will be used.
+            otherwise the Python solver will be used.
         """
+
         # imposing this to simplify things, I don't use it anyway
         is_band_connection = False
 
