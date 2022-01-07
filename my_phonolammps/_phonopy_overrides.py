@@ -19,6 +19,8 @@ from my_phonolammps.util import _print
 class MyDynamicalMatrix(DynamicalMatrix):
     """extend the phonopy DynamicalMatrix class to implement ad-hoc fixes to my problems"""
 
+    _PRINT = False
+
     def __init__(self,
                  supercell: PhonopyAtoms,
                  primitive: Primitive,
@@ -32,9 +34,11 @@ class MyDynamicalMatrix(DynamicalMatrix):
         self._debug_printout_counter = 0
 
     def _print_debug(self):
+        if not MyDynamicalMatrix._PRINT:
+            return
         print(
             f"""\
-MyDynamicalMatrix {self._debug_printout_counter}
+MyDynamicalMatrix (debug call {self._debug_printout_counter})
 [
 self._force_constants.shape={self._force_constants.shape}
 self._svecs.shape={self._svecs.shape}
@@ -55,6 +59,10 @@ self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
     def _run_c_dynamical_matrix(self, q):
         self._print_debug()
         super()._run_c_dynamical_matrix(q)
+
+    @staticmethod
+    def set_debug_print(b: bool) -> None:
+        MyDynamicalMatrix._PRINT = bool(b)
 
 
 class MyBandStructure(BandStructure):
