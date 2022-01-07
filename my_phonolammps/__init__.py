@@ -13,4 +13,4 @@ def set_lammps_modpath(modpath: str) -> None:
     MyLammps.MODPATH = abspath(expanduser(modpath))
 
 
-__version__ = "2021.5.4_debug6"
+__version__ = "2021.5.4_debug7"

@@ -7,12 +7,51 @@ from phonopy import Phonopy
 from phonopy.phonon.band_structure import BandStructure
 from phonopy.cui.load import load_helper
 from phonopy.interface.phonopy_yaml import PhonopyYaml
-from phonopy.structure.cells import get_primitive_matrix
+from phonopy.structure.cells import get_primitive_matrix, Primitive
+from phonopy.structure.atoms import PhonopyAtoms
 from phonopy.interface.calculator import get_default_physical_units
 from phonopy.harmonic.dynamical_matrix import DynamicalMatrix
 from phonopy.units import VaspToTHz
 
 from my_phonolammps.util import _print
+
+
+class MyDynamicalMatrix(DynamicalMatrix):
+    """extend the phonopy DynamicalMatrix class to implement ad-hoc fixes to my problems"""
+
+    def __init__(self,
+                 supercell: PhonopyAtoms,
+                 primitive: Primitive,
+                 force_constants: np.ndarray,
+                 decimals: int = None):
+        super().__init__(supercell=supercell,
+                         primitive=primitive,
+                         force_constants=force_constants,
+                         decimals=decimals)
+
+    def _print_debug(self):
+        print(
+            f"""\
+MyDynamicalMatrix
+[
+self._force_constants.shape={self._force_constants.shape}
+self._svecs.shape={self._svecs.shape}
+self._multi.shape={self._multi.shape}
+len(self._pcell)={len(self._pcell)}
+len(self._scell)={len(self._scell)}
+len(self._pcell.masses)={len(self._pcell.masses)}
+self._pcell.p2s_map.shape={self._pcell.p2s_map.shape}
+self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
+]
+            """)
+
+    def _run_py_dynamical_matrix(self, q):
+        self._print_debug()
+        super()._run_py_dynamical_matrix(q)
+
+    def _run_c_dynamical_matrix(self, q):
+        self._print_debug()
+        super()._run_c_dynamical_matrix(q)
 
 
 class MyBandStructure(BandStructure):
@@ -190,6 +229,45 @@ class MyPhonopy(Phonopy):
             factor=self._factor,
             use_C_library=use_C_library
         )
+
+    def _set_dynamical_matrix(self):
+        self._dynamical_matrix = None
+
+        # if self._is_symmetry and self._nac_params is not None:
+        #     borns, epsilon = symmetrize_borns_and_epsilon(
+        #         self._nac_params["born"],
+        #         self._nac_params["dielectric"],
+        #         self._primitive,
+        #         symprec=self._symprec,
+        #     )
+        #     nac_params = self._nac_params.copy()
+        #     nac_params.update({"born": borns, "dielectric": epsilon})
+        # else:
+        #     nac_params = self._nac_params
+
+        if self._supercell is None or self._primitive is None:
+            raise RuntimeError("Supercell or primitive is not created.")
+        if self._force_constants is None:
+            raise RuntimeError("Force constants are not prepared.")
+        if self._primitive.masses is None:
+            raise RuntimeError("Atomic masses are not correctly set.")
+
+        if self._frequency_scale_factor is None:
+            force_constants = self._force_constants
+        else:
+            force_constants = self._force_constants * self._frequency_scale_factor**2
+
+        self._dynamical_matrix = MyDynamicalMatrix(self._supercell,
+                                                   self._primitive,
+                                                   force_constants,
+                                                   decimals=None)
+
+        # DynamicalMatrix instance transforms force constants in correct
+        # type of numpy array.
+        self._force_constants = self._dynamical_matrix.force_constants
+
+        if self._group_velocity is not None:
+            self._set_group_velocity()
 
 
 def write_hdf5_band_structure(phonon: MyPhonopy,
