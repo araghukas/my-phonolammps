@@ -1,0 +1,5 @@
+lammps
+numpy
+h5py
+phonopy
+seekpath
