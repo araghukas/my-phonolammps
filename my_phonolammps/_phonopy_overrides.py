@@ -39,8 +39,9 @@ class MyDynamicalMatrix(DynamicalMatrix):
         self._debug_printout_counter = 0
 
     def __repr__(self):
-        return f"""\
-MyDynamicalMatrix (debug call {self._debug_printout_counter})
+        return \
+f"""
+MyDynamicalMatrix
 [
 self._force_constants.shape={self._force_constants.shape}
 self._svecs.shape={self._svecs.shape}
@@ -53,11 +54,12 @@ self._pcell.s2p_map.shape={self._pcell.s2p_map.shape}
 
 dynamical_matrix={"None" if self.dynamical_matrix is None else "Initialized"}
 ]
-            """
+"""
 
     def _print_debug(self):
         if not MyDynamicalMatrix._PRINT:
             return
+        print("(debug call {self._debug_printout_counter}")
         print(self)
         self._debug_printout_counter += 1
 

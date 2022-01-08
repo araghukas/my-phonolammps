@@ -13,5 +13,4 @@ def set_lammps_modpath(modpath: str) -> None:
     MyLammps.MODPATH = abspath(expanduser(modpath))
 
 
-__version__ = "2022.1.debug2"
-print(f"my-phonolammps: {__version__}")
+__version__ = "2022.0"
