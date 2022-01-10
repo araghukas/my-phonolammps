@@ -4,9 +4,6 @@ import os
 
 class PhononOutputFiles:
     """manages output files of phonon calculations"""
-    output_dir: str
-    marker: str
-
     def __init__(self, output_dir, marker: str):
 
         output_dir = os.path.expanduser(output_dir)
